@@ -3,7 +3,7 @@ import { Camera, CameraOff, Eye, EyeOff, AlertCircle, CheckCircle2, Brain, Zap, 
 
 const API_BASE = 'http://localhost:8000';
 
-export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggestion }) {
+export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggestion, onCameraStatusChange }) {
   const [cameraActive, setCameraActive] = useState(false);
   const [showPreview, setShowPreview] = useState(true);
   const [isCalibrating, setIsCalibrating] = useState(false);
@@ -23,10 +23,15 @@ export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggesti
   const [sustainedState, setSustainedState] = useState('Flow');
   const [sustainedSeconds, setSustainedSeconds] = useState(0);
 
+  // Presentation Demo Mode state (explicitly labeled simulation)
+  const [isSimulated, setIsSimulated] = useState(false);
+  const [simulatedStateName, setSimulatedStateName] = useState(null);
+
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
   const intervalRef = useRef(null);
+  const isSimulatedRef = useRef(false);
   
   // Personal baseline calibration
   const baseBrowRef = useRef(0.005);
@@ -40,9 +45,11 @@ export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggesti
   // Store parent callbacks in refs so interval does NOT restart on parent re-renders
   const onCognitiveLoadUpdateRef = useRef(onCognitiveLoadUpdate);
   const onTriggerSuggestionRef = useRef(onTriggerSuggestion);
+  const onCameraStatusChangeRef = useRef(onCameraStatusChange);
   useEffect(() => {
     onCognitiveLoadUpdateRef.current = onCognitiveLoadUpdate;
     onTriggerSuggestionRef.current = onTriggerSuggestion;
+    onCameraStatusChangeRef.current = onCameraStatusChange;
   });
 
   // ── Callback ref: invoked immediately when <video> DOM node is mounted ──
@@ -114,10 +121,16 @@ export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggesti
       setSustainedSeconds(0);
       setDetectedState('Calibrating (0/5s)');
       setStateReason('Look naturally at the screen to establish personal baseline');
+      if (onCameraStatusChangeRef.current) {
+        onCameraStatusChangeRef.current({ active: true, calibrated: false });
+      }
     } catch (err) {
       console.error('Error opening webcam:', err);
       setErrorMsg('Could not access webcam. Please verify camera permissions in your browser.');
       setCameraActive(false);
+      if (onCameraStatusChangeRef.current) {
+        onCameraStatusChangeRef.current({ active: false, calibrated: false });
+      }
     }
   };
 
@@ -137,6 +150,9 @@ export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggesti
     setStateReason('Camera inactive');
     setSustainedSeconds(0);
     sustainedSecsRef.current = 0;
+    if (onCameraStatusChangeRef.current) {
+      onCameraStatusChangeRef.current({ active: false, calibrated: false });
+    }
   }, []);
 
   // Stop camera on unmount
@@ -202,6 +218,11 @@ export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggesti
         const data = await response.json();
         setBackendConnected(true);
 
+        // When demo simulation is active, preserve it without overwriting from camera ticks
+        if (isSimulatedRef.current) {
+          return;
+        }
+
         if (data.status === 'success' && data.face_detected) {
           const currentMetrics = data.metrics || {};
           setMetrics(currentMetrics);
@@ -228,6 +249,9 @@ export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggesti
               setIsCalibrating(false);
               setDetectedState(data.state_label || 'Flow (Optimal)');
               setStateReason('Baseline calibrated! Real-time AI monitoring active.');
+              if (onCameraStatusChangeRef.current) {
+                onCameraStatusChangeRef.current({ active: true, calibrated: true });
+              }
             }
             return;
           }
@@ -294,11 +318,59 @@ export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggesti
 
   // Color mappings
   const getStateColor = () => {
+    if (isSimulated) {
+      if (simulatedStateName === 'overload') return '#f43f5e';
+      if (simulatedStateName === 'boredom') return '#f59e0b';
+      if (simulatedStateName === 'flow') return '#10b981';
+    }
     if (detectedState.includes('Flow')) return '#10b981'; // Emerald
     if (detectedState.includes('Overload') || detectedState.includes('Confusion')) return '#f43f5e'; // Rose
     if (detectedState.includes('Boredom') || detectedState.includes('Disengaged')) return '#f59e0b'; // Amber
     if (detectedState.includes('Calibrating')) return '#818cf8'; // Indigo
     return '#94a3b8';
+  };
+
+  // ── Presentation Demo Controls (Clearly labeled simulation) ──
+  const simulateState = (target) => {
+    isSimulatedRef.current = true;
+    setIsSimulated(true);
+    setSimulatedStateName(target);
+
+    if (target === 'overload') {
+      setDetectedState('Overload / Confusion (SIMULATED)');
+      setStateReason('Demo simulation: high AU4 brow furrow strain & confusion');
+      setProbabilities({ flow: 0.05, overload: 0.90, boredom: 0.05 });
+      setConfidence(94);
+      setMetrics({ brow_down: 0.125, blink: 0.04, squint: 0.45, pitch_ratio: -0.05 });
+      if (onCognitiveLoadUpdateRef.current) onCognitiveLoadUpdateRef.current(84);
+      if (onTriggerSuggestionRef.current) onTriggerSuggestionRef.current('simpler');
+    } else if (target === 'boredom') {
+      setDetectedState('Boredom / Disengaged (SIMULATED)');
+      setStateReason('Demo simulation: flat affect, low arousal, looking away');
+      setProbabilities({ flow: 0.06, overload: 0.04, boredom: 0.90 });
+      setConfidence(92);
+      setMetrics({ brow_down: 0.002, blink: 0.02, squint: 0.10, pitch_ratio: 0.48 });
+      if (onCognitiveLoadUpdateRef.current) onCognitiveLoadUpdateRef.current(22);
+      if (onTriggerSuggestionRef.current) onTriggerSuggestionRef.current('harder');
+    } else if (target === 'flow') {
+      setDetectedState('Flow / Optimal (SIMULATED)');
+      setStateReason('Demo simulation: focused steady reading pace');
+      setProbabilities({ flow: 0.90, overload: 0.05, boredom: 0.05 });
+      setConfidence(90);
+      setMetrics({ brow_down: 0.008, blink: 0.15, squint: 0.35, pitch_ratio: 0.02 });
+      if (onCognitiveLoadUpdateRef.current) onCognitiveLoadUpdateRef.current(48);
+    }
+  };
+
+  const resetSimulation = () => {
+    isSimulatedRef.current = false;
+    setIsSimulated(false);
+    setSimulatedStateName(null);
+    if (!cameraActive) {
+      setDetectedState('Idle');
+      setStateReason('Camera inactive');
+      if (onCognitiveLoadUpdateRef.current) onCognitiveLoadUpdateRef.current(50);
+    }
   };
 
   return (
@@ -578,6 +650,69 @@ export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggesti
           </span>
         </div>
       )}
+
+      {/* ── Presentation Demo Controls (Clearly labeled simulation) ── */}
+      <div style={{
+        marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--border)',
+      }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8,
+        }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+            Presentation Demo Controls
+          </span>
+          {isSimulated && (
+            <span style={{
+              fontSize: 9, fontWeight: 800, color: '#fda4af', background: 'rgba(244,63,94,0.18)',
+              padding: '2px 6px', borderRadius: 4, border: '1px solid rgba(244,63,94,0.3)',
+            }}>
+              SIMULATION ACTIVE
+            </span>
+          )}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+          <button
+            type="button"
+            id="demo-simulate-overload"
+            onClick={() => simulateState('overload')}
+            style={{
+              padding: '6px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700,
+              background: simulatedStateName === 'overload' ? 'rgba(244,63,94,0.3)' : 'rgba(244,63,94,0.12)',
+              color: '#fda4af', border: '1px solid rgba(244,63,94,0.3)', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+            }}
+          >
+            ⚡ Overload
+          </button>
+          <button
+            type="button"
+            id="demo-simulate-boredom"
+            onClick={() => simulateState('boredom')}
+            style={{
+              padding: '6px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700,
+              background: simulatedStateName === 'boredom' ? 'rgba(245,158,11,0.3)' : 'rgba(245,158,11,0.12)',
+              color: '#fcd34d', border: '1px solid rgba(245,158,11,0.3)', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+            }}
+          >
+            ⚡ Boredom
+          </button>
+        </div>
+        {isSimulated && (
+          <button
+            type="button"
+            id="demo-reset-sim"
+            onClick={resetSimulation}
+            style={{
+              marginTop: 6, width: '100%', padding: '5px', borderRadius: 6, fontSize: 10, fontWeight: 600,
+              background: 'rgba(255,255,255,0.05)', color: 'var(--text-muted)', border: '1px solid var(--border)',
+              cursor: 'pointer', textAlign: 'center',
+            }}
+          >
+            🔄 Reset to Live State
+          </button>
+        )}
+      </div>
     </div>
   );
 }

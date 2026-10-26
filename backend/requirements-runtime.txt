@@ -1,0 +1,23 @@
+# CogFlow Backend — Runtime Dependencies Only
+# (Training-only packages like torch, pandas, scikit-learn are excluded)
+# (ChromaDB excluded: requires C++ build tools; backend falls back to in-memory store)
+
+# ── Web Framework ──
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+python-multipart==0.0.9
+
+# ── AI / LLM (optional — backend works without API key) ──
+anthropic==0.28.0
+
+# ── ML Model Inference ──
+onnxruntime==1.18.0
+numpy==1.26.4
+
+# ── Computer Vision & Facial Analysis ──
+mediapipe>=0.10.0
+opencv-python>=4.8.0
+
+# ── Database (ORM & SQLite) ──
+sqlalchemy>=2.0.0
+

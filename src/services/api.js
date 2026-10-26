@@ -51,6 +51,21 @@ export async function updateUser(userId, updateData) {
   return data.user;
 }
 
+export async function adaptContent(adaptationData) {
+  try {
+    const res = await fetch(`${API_BASE}/api/adapt`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(adaptationData),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    console.warn('[API] adaptContent error, falling back to local curriculum:', err);
+    return null;
+  }
+}
+
 export async function saveSession(sessionData) {
   try {
     const res = await fetch(`${API_BASE}/api/sessions`, {

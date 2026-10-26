@@ -5,6 +5,9 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 import json
 import os
+import tempfile
+
+os.environ.setdefault("MPLCONFIGDIR", os.path.join(tempfile.gettempdir(), "cogflow_matplotlib"))
 
 from rag_engine import RAGEngine
 from face_analyzer import FaceAnalyzer
@@ -67,6 +70,11 @@ class SessionSaveRequest(BaseModel):
 class StudentData(BaseModel):
     cognitive_state: int  # 0 = Flow, 1 = Overload, 2 = Boredom
     current_level: int    # Content difficulty level ranging from 1 to 5
+    topic: Optional[str] = None          # Active topic name from frontend
+    subject: Optional[str] = None        # Active subject name
+    current_tier: Optional[str] = None   # Current tier: tier1 / tier3 / tier5
+    target_tier: Optional[str] = None    # Target tier: tier1 / tier3 / tier5
+    curated_content: Optional[str] = None  # Curated markdown content for the target tier
 
 class FrameRequest(BaseModel):
     image: str  # Base64 data URL from browser canvas
@@ -77,15 +85,21 @@ class PDFRequest(BaseModel):
     filename: str
     content: str
 
-def rewrite_with_claude(text: str, state: int):
+def rewrite_with_claude(text: str, state: int) -> tuple[str, bool]:
+    """
+    Attempt real-time rewriting using Claude Haiku.
+    Returns (text, was_rewritten: bool).
+    """
     # Read API key from environment variable (never hardcode keys)
     api_key = os.environ.get("CLAUDE_API_KEY", "")
     if not api_key:
-        # Graceful fallback: return original RAG text if no key is configured
-        print("⚠️  CLAUDE_API_KEY not set — returning raw RAG content (no rewrite)")
-        return text
+        # Graceful fallback: return original curated RAG text if no key is configured
+        print("[Claude] CLAUDE_API_KEY not set - using curated educational content (no LLM rewrite)")
+        return text, False
 
-    client = anthropic.Anthropic(api_key=api_key)
+    if anthropic is None:
+        print("[Claude] anthropic library not available - using curated educational content")
+        return text, False
 
     # Construct targeted prompts based on the detected cognitive state
     if state == 1:
@@ -93,22 +107,22 @@ def rewrite_with_claude(text: str, state: int):
     elif state == 2:
         prompt = f"Rewrite the following educational text to add more advanced depth and challenge for a student who is bored:\n\n{text}"
     else:
-        return text
+        return text, False
 
     try:
-        # Request a real-time content rewrite using the lightweight Haiku model
+        client = anthropic.Anthropic(api_key=api_key)
         response = client.messages.create(
             model="claude-3-haiku-20240307",
-            max_tokens=300,
+            max_tokens=400,
             messages=[{"role": "user", "content": prompt}]
         )
         first_content = response.content[0]
         if hasattr(first_content, 'text'):
-            return first_content.text  # type: ignore
-        return text
+            return first_content.text, True  # type: ignore
+        return text, False
     except Exception as e:
-        print(f"⚠️ Claude API Error: {e}")
-        return text  # Fallback to original RAG text
+        print(f"[Claude Error] {e} - falling back to curated content")
+        return text, False  # Fallback to curated text
 
 
 @app.get("/")
@@ -124,32 +138,58 @@ def get_adaptation(data: StudentData):
     Request body:
         cognitive_state: int  — 0=Flow, 1=Overload, 2=Boredom
         current_level:   int  — 1 to 5 (current difficulty level)
+        topic:           str  — optional active topic name
+        subject:         str  — optional active subject name
+        current_tier:    str  — optional 'tier1' | 'tier3' | 'tier5'
+        target_tier:     str  — optional 'tier1' | 'tier3' | 'tier5'
+        curated_content: str  — optional curated content for target tier
 
     Response:
-        status:           "success"
-        action_taken:     human-readable description of what happened
-        new_level:        int — updated difficulty level
-        original_rag_text: raw text from ChromaDB
-        content:          final text (Claude-rewritten if key available, else raw)
+        status:              "success"
+        action_taken:        human-readable description of what happened
+        new_level:           int — updated difficulty level (1-5)
+        new_tier:            str — updated difficulty tier ('tier1', 'tier3', 'tier5')
+        topic:               str — active topic
+        content_source:      "curated_topic_library" | "claude_ai" | "rag_vector_store"
+        rewritten_by_claude: bool — true if genuinely rewritten by Claude LLM
+        original_rag_text:   raw curated / RAG text
+        content:             final text (Claude-rewritten if key available, else curated)
     """
-    # Step 1: Get adapted content + new level from RAG engine
-    adapted_text, new_level = rag.adapt_content(data.current_level, data.cognitive_state)
+    # Step 1: Adapt content based on cognitive state, topic, and curated library
+    adapted_text, new_level, new_tier, content_source = rag.adapt_content(
+        current_level=data.current_level,
+        cognitive_state=data.cognitive_state,
+        topic=data.topic,
+        current_tier=data.current_tier,
+        target_tier=data.target_tier,
+        curated_content=data.curated_content
+    )
 
     action_log = "Maintained Pace (Flow State)"
-    final_text = adapted_text
-
-    # Step 2: Trigger Claude rewriting for overload or boredom states
     if data.cognitive_state == 1:
-        action_log = "Simplified Content (Overload Detected)"
-        final_text = rewrite_with_claude(adapted_text, 1)
+        action_log = f"Simplified Content (Overload Detected & Tier Shifted to {new_tier})"
     elif data.cognitive_state == 2:
-        action_log = "Increased Depth (Boredom Detected)"
-        final_text = rewrite_with_claude(adapted_text, 2)
+        action_log = f"Increased Depth (Boredom Detected & Tier Shifted to {new_tier})"
+
+    # Step 2: Trigger Claude rewriting if key is configured
+    final_text = adapted_text
+    rewritten_by_claude = False
+    if data.cognitive_state in (1, 2):
+        rewritten_text, success = rewrite_with_claude(adapted_text, data.cognitive_state)
+        if success:
+            final_text = rewritten_text
+            rewritten_by_claude = True
+
+    final_source = "claude_ai" if rewritten_by_claude else content_source
 
     return {
         "status": "success",
         "action_taken": action_log,
         "new_level": new_level,
+        "new_tier": new_tier,
+        "topic": data.topic or "General",
+        "content_source": final_source,
+        "rewritten_by_claude": rewritten_by_claude,
         "original_rag_text": adapted_text,
         "content": final_text,
     }

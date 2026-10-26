@@ -5,8 +5,9 @@ import CognitiveLoadGauge from '../components/CognitiveLoadGauge';
 import SessionTimeline from '../components/SessionTimeline';
 import ContentRenderer from '../components/ContentRenderer';
 import WebcamMonitor from '../components/WebcamMonitor';
-import { saveSession } from '../services/api';
+import { saveSession, adaptContent } from '../services/api';
 import { useUser } from '../context/UserContext';
+import { getContent } from '../data/subjects';
 
 // ─────────────────────────────────────────────────────────────
 // Tier ordering: 1 = Simplified, 3 = Standard, 5 = Expert
@@ -39,7 +40,7 @@ const TIER_META = {
 // The returned `content` field replaces the static getContent() call
 // in ContentRenderer.jsx.
 // ─────────────────────────────────────────────────────────────
-function useSignalMonitor(isActive, currentTier) {
+function useSignalMonitor(isActive, currentTier, isWebcamTrackingActive = false) {
   const [signals, setSignals]         = useState({ mouseVelocity: 0, scrollRate: 0, typingPace: 0 });
   const [cogLoad, setCogLoad]         = useState(50);    // 0-100, for the gauge
   const [suggestion, setSuggestion]   = useState(null);  // 'simpler' | 'harder' | null
@@ -50,6 +51,11 @@ function useSignalMonitor(isActive, currentTier) {
   const signalBuffer   = useRef([]);   // rolling window of (velocity, scroll, keys) for classification
   const observeSince   = useRef(null); // timestamp when current-tier observation started
   const currentTierRef = useRef(currentTier);
+  const isWebcamRef    = useRef(isWebcamTrackingActive);
+
+  useEffect(() => {
+    isWebcamRef.current = isWebcamTrackingActive;
+  }, [isWebcamTrackingActive]);
 
   // Keep tier ref in sync so the interval can read it without stale closure
   useEffect(() => {
@@ -111,14 +117,14 @@ function useSignalMonitor(isActive, currentTier) {
       if (elapsedSinceChange < 45) return; // wait at least 45 seconds on a tier
       if (dismissed) return;               // user already dismissed this suggestion
 
-      // ── PLACEHOLDER: Replace this block with real AI model call ──
-      // Heuristic: high avg mouse velocity + high scroll → bored (content too easy)
-      //            low velocity + many keystrokes → overloaded (pausing to think/search)
+      // If webcam AI is actively monitoring, leave cognitive load & suggestions to the webcam
+      if (isWebcamRef.current) return;
+
       const buf = signalBuffer.current;
       if (buf.length === 0) return;
       const avgVel = buf.reduce((a, b) => a + b, 0) / buf.length;
 
-      // Simulated cognitive load based on signals
+      // Simulated cognitive load based on interaction signals
       let load = 50;
       if (avgVel > 55) load = Math.max(10, 50 - (avgVel - 55) * 0.8);  // fast mouse → bored
       else if (avgVel < 15) load = Math.min(90, 50 + (15 - avgVel) * 2); // very slow → overloaded
@@ -135,7 +141,6 @@ function useSignalMonitor(isActive, currentTier) {
         // Overloaded and not already on simplest tier → suggest simpler
         setSuggestion('simpler');
       }
-      // ── End of placeholder ──
     }, 30000);
 
     window.addEventListener('mousemove', onMouseMove);
@@ -180,10 +185,20 @@ export default function LearningInterface() {
   const [contentFading,      setContentFading]      = useState(false);  // for fade transition
   const [loadHistory,        setLoadHistory]        = useState([]);
 
+  // Adaptation API & Content states
+  const [webcamStatus,       setWebcamStatus]       = useState({ active: false, calibrated: false });
+  const [customContent,      setCustomContent]      = useState(null);
+  const [contentSource,      setContentSource]      = useState('curated_topic_library');
+  const [rewrittenByClaude,  setRewrittenByClaude]  = useState(false);
+
   const contentTopRef = useRef(null);
   const elapsedRef    = useRef(0);
 
-  const { signals, cogLoad, setCogLoad, suggestion, setSuggestion, dismissSuggestion } = useSignalMonitor(isActive, currentTier);
+  const { signals, cogLoad, setCogLoad, suggestion, setSuggestion, dismissSuggestion } = useSignalMonitor(
+    isActive,
+    currentTier,
+    webcamStatus.active
+  );
 
   const currentTierMeta = TIER_META[currentTier];
   const currentTopic    = topicNames[currentTopicIndex] || 'Introduction';
@@ -207,6 +222,9 @@ export default function LearningInterface() {
   const changeTier = useCallback((newTier, reason = 'manual') => {
     if (newTier === currentTier) return;
     setContentFading(true);
+    setCustomContent(null); // Return to standard curated content for this tier
+    setContentSource('curated_topic_library');
+    setRewrittenByClaude(false);
     setTimeout(() => {
       const prevTier = currentTier;
       setCurrentTier(newTier);
@@ -218,6 +236,7 @@ export default function LearningInterface() {
         toLabel: TIER_META[newTier].label,
         topic: currentTopic,
         reason,
+        source: 'curated_topic_library',
       }]);
       setContentFading(false);
     }, 280); // matches CSS fade duration
@@ -234,12 +253,68 @@ export default function LearningInterface() {
     if (idx < TIERS.length - 1) changeTier(TIERS[idx + 1], 'manual-harder');
   };
 
-  // ── Accept AI suggestion ──
-  const acceptSuggestion = () => {
+  // ── Accept AI suggestion: Dispatches real POST /api/adapt request ──
+  const acceptSuggestion = async () => {
     const idx = TIERS.indexOf(currentTier);
-    if (suggestion === 'simpler' && idx > 0) changeTier(TIERS[idx - 1], 'ai-suggested');
-    if (suggestion === 'harder'  && idx < TIERS.length - 1) changeTier(TIERS[idx + 1], 'ai-suggested');
+    const targetTier = suggestion === 'simpler' && idx > 0
+      ? TIERS[idx - 1]
+      : (suggestion === 'harder' && idx < TIERS.length - 1 ? TIERS[idx + 1] : null);
+
+    if (!targetTier) {
+      dismissSuggestion();
+      return;
+    }
+
+    const cogStateCode = suggestion === 'simpler' ? 1 : 2;
+    const tierToLevel = { tier1: 1, tier3: 3, tier5: 5 };
+    const curLevel = tierToLevel[currentTier] || 3;
+    const targetCurated = getContent(currentTopic, targetTier);
+
+    setContentFading(true);
     dismissSuggestion();
+
+    try {
+      // Real API call to FastAPI backend
+      const adaptRes = await adaptContent({
+        cognitive_state: cogStateCode,
+        current_level: curLevel,
+        topic: currentTopic,
+        subject: subject,
+        current_tier: currentTier,
+        target_tier: targetTier,
+        curated_content: targetCurated,
+      });
+
+      const prevTier = currentTier;
+      const finalTier = adaptRes?.new_tier || targetTier;
+      setCurrentTier(finalTier);
+
+      if (adaptRes?.content) {
+        setCustomContent(adaptRes.content);
+        setContentSource(adaptRes.content_source || 'curated_topic_library');
+        setRewrittenByClaude(Boolean(adaptRes.rewritten_by_claude));
+      } else {
+        setCustomContent(null);
+        setContentSource('curated_topic_library');
+        setRewrittenByClaude(false);
+      }
+
+      setAdaptationLog(prev => [...prev, {
+        time: elapsedRef.current,
+        from: prevTier,
+        to: finalTier,
+        fromLabel: TIER_META[prevTier].label,
+        toLabel: TIER_META[finalTier].label,
+        topic: currentTopic,
+        reason: 'ai-suggested',
+        source: adaptRes?.content_source || 'curated_topic_library',
+      }]);
+    } catch (err) {
+      console.warn('Backend adapt error, using curriculum fallback:', err);
+      changeTier(targetTier, 'ai-suggested');
+    } finally {
+      setTimeout(() => setContentFading(false), 280);
+    }
   };
 
   const { user } = useUser();
@@ -282,6 +357,9 @@ export default function LearningInterface() {
   const goToTopic = (idx) => {
     setCurrentTopicIndex(idx);
     setCurrentTier('tier3'); // Reset to standard on new topic
+    setCustomContent(null);
+    setContentSource('curated_topic_library');
+    setRewrittenByClaude(false);
     contentTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     document.getElementById(`topic-tab-${idx}`)?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
   };
@@ -421,7 +499,13 @@ export default function LearningInterface() {
                 minHeight: 360,
               }}
             >
-              <ContentRenderer tier={currentTier} topic={currentTopic} />
+              <ContentRenderer
+                tier={currentTier}
+                topic={currentTopic}
+                customContent={customContent}
+                contentSource={contentSource}
+                rewrittenByClaude={rewrittenByClaude}
+              />
             </div>
 
             {/* ── Sticky difficulty bar at bottom of content card ── */}
@@ -553,6 +637,7 @@ export default function LearningInterface() {
             <WebcamMonitor
               onCognitiveLoadUpdate={setCogLoad}
               onTriggerSuggestion={setSuggestion}
+              onCameraStatusChange={setWebcamStatus}
             />
           </div>
 

@@ -15,9 +15,9 @@ const TIER_META = {
   tier5: { label: 'Expert',      color: 'var(--amber)',        dot: '#f59e0b' },
 };
 
-export default function ContentRenderer({ tier, topic }) {
+export default function ContentRenderer({ tier, topic, customContent = null, contentSource = null, rewrittenByClaude = false }) {
   const meta = TIER_META[tier] || TIER_META.tier3;
-  const rawContent = getContent(topic, tier);
+  const rawContent = customContent || getContent(topic, tier);
 
   return (
     <div style={{ fontFamily: 'Inter, sans-serif' }}>
@@ -37,9 +37,29 @@ export default function ContentRenderer({ tier, topic }) {
           <span style={{ fontSize: 12, fontWeight: 700, color: meta.color, letterSpacing: '0.05em' }}>
             {meta.label.toUpperCase()}
           </span>
-          <span className="placeholder-tag" style={{ fontSize: 10, padding: '2px 8px' }}>
-            ⚙ RAG Adaptive Engine
-          </span>
+          {rewrittenByClaude ? (
+            <span style={{
+              fontSize: 10, padding: '3px 8px', borderRadius: 6,
+              background: 'rgba(99,102,241,0.25)', color: '#c7d2fe',
+              border: '1px solid rgba(99,102,241,0.5)', fontWeight: 700,
+              display: 'inline-flex', alignItems: 'center', gap: 4
+            }}>
+              ✨ Claude AI Rewritten
+            </span>
+          ) : contentSource === 'curated_topic_library' ? (
+            <span style={{
+              fontSize: 10, padding: '3px 8px', borderRadius: 6,
+              background: 'rgba(16,185,129,0.15)', color: '#6ee7b7',
+              border: '1px solid rgba(16,185,129,0.3)', fontWeight: 700,
+              display: 'inline-flex', alignItems: 'center', gap: 4
+            }}>
+              📚 Curated Topic Content
+            </span>
+          ) : (
+            <span className="placeholder-tag" style={{ fontSize: 10, padding: '2px 8px' }}>
+              ⚙ RAG Adaptive Engine
+            </span>
+          )}
         </div>
         <span style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 600 }}>
           📖 {topic}

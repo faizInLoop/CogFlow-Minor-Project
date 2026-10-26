@@ -15,9 +15,11 @@ const TIER_META = {
   tier5: { label: 'Expert',      color: 'var(--amber)',        dot: '#f59e0b' },
 };
 
-export default function ContentRenderer({ tier, topic, customContent = null, contentSource = null, rewrittenByClaude = false }) {
+export default function ContentRenderer({ tier, topic, customContent = null, contentSource = null, rewrittenByClaude = false, readingEstimate = null }) {
   const meta = TIER_META[tier] || TIER_META.tier3;
   const rawContent = customContent || getContent(topic, tier);
+  const actualWords = rawContent.split(/\s+/).filter(Boolean).length;
+  const actualReadingEstimate = readingEstimate || { words: actualWords, minutes: Math.max(1, Math.round(actualWords / 130)) };
 
   return (
     <div style={{ fontFamily: 'Inter, sans-serif' }}>
@@ -55,6 +57,10 @@ export default function ContentRenderer({ tier, topic, customContent = null, con
             }}>
               📚 Curated Topic Content
             </span>
+          ) : contentSource === 'document_extracted' ? (
+            <span style={{ fontSize: 10, padding: '3px 8px', borderRadius: 6, background: 'rgba(6,182,212,0.12)', color: '#67e8f9', border: '1px solid rgba(6,182,212,0.25)', fontWeight: 700 }}>Document source</span>
+          ) : contentSource === 'gemini_ai' || contentSource === 'claude_ai' ? (
+            <span style={{ fontSize: 10, padding: '3px 8px', borderRadius: 6, background: 'rgba(99,102,241,0.18)', color: '#c7d2fe', border: '1px solid rgba(99,102,241,0.3)', fontWeight: 700 }}>{contentSource === 'gemini_ai' ? 'Gemini generated' : 'Claude generated'}</span>
           ) : (
             <span className="placeholder-tag" style={{ fontSize: 10, padding: '2px 8px' }}>
               ⚙ RAG Adaptive Engine
@@ -70,6 +76,7 @@ export default function ContentRenderer({ tier, topic, customContent = null, con
       <div className="content-body">
         {formatContent(rawContent)}
       </div>
+      {actualWords > 0 && <div style={{ marginTop: 20, fontSize: 11, color: 'var(--text-muted)' }}>{actualReadingEstimate.words.toLocaleString()} words · estimated {actualReadingEstimate.minutes} min at 130 wpm</div>}
     </div>
   );
 }

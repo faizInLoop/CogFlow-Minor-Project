@@ -109,7 +109,7 @@ function useSignalMonitor(isActive, currentTier, isWebcamTrackingActive = false)
       }
     }, 1000);
 
-    // ── Every 30 seconds: classify + maybe raise a suggestion ──
+    // ── Every 5 seconds: classify interaction telemetry ──
     // Minimum 45s of observation before first suggestion so user
     // has actually had time to read the content.
     const classifyTick = setInterval(() => {
@@ -141,7 +141,7 @@ function useSignalMonitor(isActive, currentTier, isWebcamTrackingActive = false)
         // Overloaded and not already on simplest tier → suggest simpler
         setSuggestion('simpler');
       }
-    }, 30000);
+    }, 5000);
 
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('scroll', onScroll);
@@ -169,7 +169,7 @@ function useSignalMonitor(isActive, currentTier, isWebcamTrackingActive = false)
 export default function LearningInterface() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { subject, topicNames = [], selectedTopics = [] } = location.state || {};
+  const { subject, topicNames = [], selectedTopics = [], topicVersions = [], topicSources = [], readingEstimates = [], topicReferences = [], documentInfo = null } = location.state || {};
 
   // Navigation guard
   useEffect(() => {
@@ -193,6 +193,8 @@ export default function LearningInterface() {
 
   const contentTopRef = useRef(null);
   const elapsedRef    = useRef(0);
+  const adaptingRef   = useRef(false);
+  const lastAdaptAtRef = useRef(0);
 
   const { signals, cogLoad, setCogLoad, suggestion, setSuggestion, dismissSuggestion } = useSignalMonitor(
     isActive,
@@ -254,7 +256,12 @@ export default function LearningInterface() {
   };
 
   // ── Accept AI suggestion: Dispatches real POST /api/adapt request ──
-  const acceptSuggestion = async () => {
+  const acceptSuggestion = useCallback(async () => {
+    if (!suggestion || adaptingRef.current) return;
+    if (Date.now() - lastAdaptAtRef.current < 15000) {
+      dismissSuggestion();
+      return;
+    }
     const idx = TIERS.indexOf(currentTier);
     const targetTier = suggestion === 'simpler' && idx > 0
       ? TIERS[idx - 1]
@@ -268,10 +275,12 @@ export default function LearningInterface() {
     const cogStateCode = suggestion === 'simpler' ? 1 : 2;
     const tierToLevel = { tier1: 1, tier3: 3, tier5: 5 };
     const curLevel = tierToLevel[currentTier] || 3;
-    const targetCurated = getContent(currentTopic, targetTier);
+    const uploadedVersions = topicVersions[currentTopicIndex];
+    const targetCurated = uploadedVersions?.[targetTier] || getContent(currentTopic, targetTier);
 
     setContentFading(true);
     dismissSuggestion();
+    adaptingRef.current = true;
 
     try {
       // Real API call to FastAPI backend
@@ -283,6 +292,7 @@ export default function LearningInterface() {
         current_tier: currentTier,
         target_tier: targetTier,
         curated_content: targetCurated,
+        content_source: topicSources[currentTopicIndex] || (uploadedVersions ? 'document_extracted' : 'curated_topic_library'),
       });
 
       const prevTier = currentTier;
@@ -307,15 +317,24 @@ export default function LearningInterface() {
         toLabel: TIER_META[finalTier].label,
         topic: currentTopic,
         reason: 'ai-suggested',
-        source: adaptRes?.content_source || 'curated_topic_library',
+        source: adaptRes?.content_source || topicSources[currentTopicIndex] || 'curated_topic_library',
       }]);
     } catch (err) {
       console.warn('Backend adapt error, using curriculum fallback:', err);
       changeTier(targetTier, 'ai-suggested');
     } finally {
+      lastAdaptAtRef.current = Date.now();
+      adaptingRef.current = false;
       setTimeout(() => setContentFading(false), 280);
     }
-  };
+  }, [suggestion, currentTier, currentTopic, currentTopicIndex, subject, dismissSuggestion, changeTier, topicVersions, topicSources]);
+
+  // Apply a stable event asynchronously so rendering stays separate from adaptation.
+  useEffect(() => {
+    if (!suggestion || !isActive) return undefined;
+    const timer = setTimeout(() => { void acceptSuggestion(); }, 0);
+    return () => clearTimeout(timer);
+  }, [suggestion, isActive, acceptSuggestion]);
 
   const { user } = useUser();
 
@@ -378,55 +397,6 @@ export default function LearningInterface() {
       <div className="glow-orb glow-orb-1" />
       <div className="glow-orb glow-orb-2" />
       <Navbar currentStep={4} session={{ time: formatTime(elapsedSeconds), state: cogLoad < 35 ? 'bored' : cogLoad > 70 ? 'overload' : 'flow' }} />
-
-      {/* ── AI Suggestion Toast ── */}
-      {suggestion && (
-        <div
-          className="animate-fadeIn"
-          style={{
-            position: 'fixed', top: 80, right: 24, zIndex: 300,
-            background: 'rgba(15,15,31,0.97)',
-            border: `1px solid ${suggestion === 'simpler' ? 'rgba(244,63,94,0.4)' : 'rgba(245,158,11,0.4)'}`,
-            borderRadius: 'var(--radius-lg)', padding: '16px 18px', maxWidth: 300,
-            boxShadow: '0 8px 40px rgba(0,0,0,0.5)', backdropFilter: 'blur(20px)',
-          }}
-        >
-          <div style={{ fontSize: 11, fontWeight: 800, marginBottom: 6, letterSpacing: '0.08em', textTransform: 'uppercase', color: suggestion === 'simpler' ? '#fda4af' : '#fcd34d' }}>
-            🧠 CogFlow Suggestion
-          </div>
-          <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.55, marginBottom: 14 }}>
-            {suggestion === 'simpler'
-              ? 'You seem stuck or finding this section challenging. Would you like to simplify the language into key bullet points?'
-              : 'You seem comfortable and breezing through this. Would you like to increase the depth and challenge?'
-            }
-          </p>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              id="suggestion-accept-btn"
-              onClick={acceptSuggestion}
-              style={{
-                flex: 1, padding: '9px 12px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 12,
-                background: suggestion === 'simpler' ? 'rgba(244,63,94,0.25)' : 'rgba(245,158,11,0.25)',
-                color: suggestion === 'simpler' ? '#fda4af' : '#fcd34d',
-                transition: 'var(--transition)'
-              }}
-            >
-              {suggestion === 'simpler' ? '⬇ Simplify Content' : '⬆ Increase Challenge'}
-            </button>
-            <button
-              id="suggestion-dismiss-btn"
-              onClick={dismissSuggestion}
-              style={{
-                padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)',
-                background: 'rgba(255,255,255,0.04)', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 12, fontWeight: 600,
-                transition: 'var(--transition)'
-              }}
-            >
-              Remain at Current Pace
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* ── Main Layout ── */}
       <div
@@ -502,10 +472,16 @@ export default function LearningInterface() {
               <ContentRenderer
                 tier={currentTier}
                 topic={currentTopic}
-                customContent={customContent}
-                contentSource={contentSource}
+                customContent={customContent || topicVersions[currentTopicIndex]?.[currentTier] || null}
+                contentSource={topicSources[currentTopicIndex] || (topicVersions[currentTopicIndex] ? (documentInfo ? 'document_extracted' : 'curated_topic_library') : contentSource)}
+                readingEstimate={readingEstimates[currentTopicIndex]?.[currentTier] || null}
                 rewrittenByClaude={rewrittenByClaude}
               />
+              {topicVersions[currentTopicIndex] && documentInfo && (
+                <div style={{ padding: '0 28px 18px', fontSize: 11, color: 'var(--text-muted)' }}>
+                  Source: {topicReferences[currentTopicIndex]?.document || documentInfo.filename} · {topicReferences[currentTopicIndex]?.section || currentTopic}{topicReferences[currentTopicIndex]?.page ? ` · page ${topicReferences[currentTopicIndex].page}` : ''}
+                </div>
+              )}
             </div>
 
             {/* ── Sticky difficulty bar at bottom of content card ── */}
@@ -662,7 +638,7 @@ export default function LearningInterface() {
               </div>
             ))}
             <div style={{ marginTop: 10, fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
-              🔍 Monitoring for 45s before any suggestion
+              🔍 Interaction estimates use a 45s observation window; webcam estimates adapt after stable 5s / 8s windows
             </div>
           </div>
 
@@ -742,7 +718,7 @@ function PreSessionScreen({ subject, topicNames, onStart, onBack }) {
               {[
                 ['🔍', 'AI monitors your reading signals silently'],
                 ['💡', 'After 45s it may suggest a difficulty change'],
-                ['✋', 'You choose to Accept or Dismiss the suggestion'],
+                ['↔️', 'Stable estimates can adjust the lesson automatically; manual tier controls remain available'],
                 ['⬇⬆', 'Or manually adjust anytime with Simpler / Harder'],
               ].map(([icon, text]) => (
                 <div key={text} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '5px 0', fontSize: 13, color: 'var(--text-secondary)' }}>

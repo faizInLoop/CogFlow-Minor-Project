@@ -25,6 +25,17 @@ uvicorn main:app --reload --port 8000
 
 Server runs at: **http://localhost:8000**
 
+Custom lesson generation is requested only when a student submits a custom topic. If `GEMINI_API_KEY` is set it is used first; `CLAUDE_API_KEY` is the fallback. Set keys in the backend process environment, never in frontend code or a committed file. Gemini/Claude usage may incur charges under the provider account; configure provider budgets before enabling a key. Without either key, curated topics and extracted-document fallback content remain available, while arbitrary-topic generation explains that a key is required.
+
+PowerShell setup (before starting Uvicorn):
+
+```powershell
+$env:GEMINI_API_KEY = "your-Google-AI-Studio-key"
+$env:GEMINI_MODEL = "gemini-3.8-flash" # optional; this is the default
+# Or configure the existing fallback provider instead:
+$env:CLAUDE_API_KEY = "your-Anthropic-key"
+```
+
 ---
 
 ## API Endpoints
@@ -57,8 +68,11 @@ Main endpoint. Called by the React frontend when content needs to adapt.
 }
 ```
 
-### `POST /api/extract-topics` *(Placeholder — Phase 2)*
-Accepts a PDF and returns extracted topics.
+### `POST /api/extract-topics`
+Accepts a PDF or TXT multipart upload (10 MB limit), extracts text and sections, and returns source-referenced topic data with three marked difficulty versions. Text-free/scanned PDFs require OCR and are rejected with an explanatory error.
+
+### `POST /api/generate-lesson`
+Accepts `{ "topic": "..." }` for a custom topic, or optional `source_text` and `source_reference` for an uploaded-document topic. Gemini is used when `GEMINI_API_KEY` is present and falls back to the existing Claude integration when configured. It validates the returned versions and reports actual word-count reading estimates. Without a provider key it returns HTTP 503 rather than substituting a generic lesson.
 
 ---
 

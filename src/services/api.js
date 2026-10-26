@@ -5,6 +5,26 @@
 
 const API_BASE = 'http://localhost:8000';
 
+export async function extractTopics(file) {
+  const form = new FormData();
+  form.append('file', file);
+  const response = await fetch(`${API_BASE}/api/extract-topics`, { method: 'POST', body: form });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.detail || `Upload failed (${response.status})`);
+  return data;
+}
+
+export async function generateLesson(topic, sourceText = null, sourceReference = null) {
+  const response = await fetch(`${API_BASE}/api/generate-lesson`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ topic, source_text: sourceText, source_reference: sourceReference }),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.detail || `Lesson generation failed (${response.status})`);
+  return data;
+}
+
 export async function getUsers() {
   try {
     const res = await fetch(`${API_BASE}/api/users`);

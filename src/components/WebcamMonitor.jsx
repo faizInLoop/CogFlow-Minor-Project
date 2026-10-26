@@ -19,7 +19,7 @@ export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggesti
   const [metrics, setMetrics] = useState({ brow_down: 0, blink: 0, squint: 0, pitch_ratio: 0 });
   const [errorMsg, setErrorMsg] = useState(null);
 
-  // 30-Second Rule Tracking
+  // Persistence windows: 5s for overload, 8s for boredom.
   const [sustainedState, setSustainedState] = useState('Flow');
   const [sustainedSeconds, setSustainedSeconds] = useState(0);
 
@@ -272,7 +272,7 @@ export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggesti
             onCognitiveLoadUpdateRef.current(calculatedLoad);
           }
 
-          // ── 30-Second Sustained Decision Rule ──
+          // Sustained-state policy avoids reacting to a single noisy estimate.
           const currentCategory = stateCode === 1 ? 'Overload' : (stateCode === 2 ? 'Boredom' : 'Flow');
           
           if (currentCategory === sustainedStateRef.current) {
@@ -285,14 +285,15 @@ export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggesti
           setSustainedState(sustainedStateRef.current);
           setSustainedSeconds(sustainedSecsRef.current);
 
-          // Trigger prompt when 30 consecutive seconds of Overload or Boredom is reached
-          if (sustainedSecsRef.current >= 30) {
+          // Fast response for overload; require a short stable window for boredom.
+          const persistenceThreshold = sustainedStateRef.current === 'Overload' ? 5 : 8;
+          if (sustainedStateRef.current !== 'Flow' && sustainedSecsRef.current >= persistenceThreshold) {
             if (sustainedStateRef.current === 'Overload' && onTriggerSuggestionRef.current) {
               onTriggerSuggestionRef.current('simpler');
             } else if (sustainedStateRef.current === 'Boredom' && onTriggerSuggestionRef.current) {
               onTriggerSuggestionRef.current('harder');
             }
-            // Reset counter to avoid duplicate firing
+            // Reset counter to avoid duplicate firing; parent cooldown prevents oscillation.
             sustainedSecsRef.current = 0;
             setSustainedSeconds(0);
           }
@@ -596,13 +597,13 @@ export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggesti
             )}
           </div>
 
-          {/* 30-Second Sustained Bar */}
+          {/* Sustained-state progress */}
           {!isCalibrating ? (
             <div style={{ background: 'rgba(255,255,255,0.02)', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-muted)', marginBottom: 4 }}>
                 <span>Sustained {sustainedState}</span>
-                <span style={{ fontWeight: 700, color: sustainedSeconds >= 20 ? '#fda4af' : 'var(--text-secondary)' }}>
-                  {sustainedSeconds}s / 30s
+                <span style={{ fontWeight: 700, color: sustainedSeconds >= (sustainedState === 'Boredom' ? 8 : 5) ? '#fda4af' : 'var(--text-secondary)' }}>
+                  {sustainedSeconds}s / {sustainedState === 'Boredom' ? 8 : 5}s
                 </span>
               </div>
               <div style={{
@@ -610,13 +611,13 @@ export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggesti
               }}>
                 <div style={{
                   height: '100%',
-                  width: `${Math.min(100, (sustainedSeconds / 30) * 100)}%`,
+                  width: `${Math.min(100, (sustainedSeconds / (sustainedState === 'Boredom' ? 8 : 5)) * 100)}%`,
                   background: sustainedState === 'Overload' ? 'var(--rose)' : (sustainedState === 'Boredom' ? 'var(--amber)' : 'var(--emerald)'),
                   transition: 'width 0.9s linear'
                 }} />
               </div>
               <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 4 }}>
-                ⏱️ 30s sustained trigger prevents false adaptation
+                Estimates are smoothed over 5 seconds (Overload) or 8 seconds (Boredom)
               </div>
             </div>
           ) : (

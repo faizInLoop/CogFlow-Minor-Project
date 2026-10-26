@@ -32,6 +32,8 @@ backend/venv/
 
 # Environment variables — NEVER commit API keys
 .env
+.env.*
+!.env.example
 *.env
 
 # ML model weights (large binaries)

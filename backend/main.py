@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
@@ -6,6 +6,10 @@ from datetime import datetime
 import json
 import os
 import tempfile
+import re
+import uuid
+import urllib.request
+import urllib.error
 
 os.environ.setdefault("MPLCONFIGDIR", os.path.join(tempfile.gettempdir(), "cogflow_matplotlib"))
 
@@ -75,6 +79,7 @@ class StudentData(BaseModel):
     current_tier: Optional[str] = None   # Current tier: tier1 / tier3 / tier5
     target_tier: Optional[str] = None    # Target tier: tier1 / tier3 / tier5
     curated_content: Optional[str] = None  # Curated markdown content for the target tier
+    content_source: Optional[str] = None
 
 class FrameRequest(BaseModel):
     image: str  # Base64 data URL from browser canvas
@@ -84,6 +89,163 @@ class FrameRequest(BaseModel):
 class PDFRequest(BaseModel):
     filename: str
     content: str
+
+class LessonGenerationRequest(BaseModel):
+    topic: str
+    source_text: Optional[str] = None
+    source_reference: Optional[str] = None
+
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+
+def _lesson_prompt(topic: str, source_text: Optional[str] = None, source_reference: Optional[str] = None) -> str:
+    grounding = ""
+    if source_text:
+        grounding = (
+            f"\nThe lesson must be grounded only in this uploaded source. Do not add unsupported facts. "
+            f"Cite this reference where relevant: {source_reference or 'uploaded source'}.\nSOURCE TEXT:\n{source_text[:18000]}\n"
+        )
+    return f"""Create a rigorous, useful lesson for the exact topic: {topic!r}.
+Return only valid JSON with this shape: {{\"versions\":{{\"tier1\":\"markdown\",\"tier3\":\"markdown\",\"tier5\":\"markdown\"}}}}.
+Each version must be a real approximately 10-minute lesson (aim for 1100-1300 words), divided into 5 or 6 clearly headed sections. Include detailed explanations, worked practical examples, and short comprehension questions with answers or guidance.
+Make the three versions substantially different in vocabulary, explanation depth, assumptions, examples, and exercise difficulty. Simplified uses plain language and concrete analogies; Standard teaches core terminology and applies it; Expert develops trade-offs, edge cases, and challenging applications. Keep all versions specifically about the requested topic. Do not claim a reading duration; the application estimates it from the returned text.{grounding}"""
+
+def _parse_lesson_json(text: str) -> Dict[str, str]:
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", cleaned, flags=re.I)
+    parsed = json.loads(cleaned)
+    versions = parsed.get("versions", parsed)
+    if not all(isinstance(versions.get(tier), str) for tier in ("tier1", "tier3", "tier5")):
+        raise ValueError("Provider response omitted one or more lesson tiers.")
+    if len({versions[t].strip() for t in ("tier1", "tier3", "tier5")}) != 3:
+        raise ValueError("Provider returned duplicate lesson versions.")
+    for tier in ("tier1", "tier3", "tier5"):
+        words = len(re.findall(r"\b[\w'-]+\b", versions[tier]))
+        headings = len(re.findall(r"(?m)^#{2,3}\s+", versions[tier]))
+        if words < 1100 or headings < 5:
+            raise ValueError(f"Provider lesson tier {tier} is too short or lacks sections.")
+    return versions
+
+def _generate_with_gemini(prompt: str) -> str:
+    key = os.environ.get("GEMINI_API_KEY", "")
+    model = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+    payload = {"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"responseMimeType": "application/json", "maxOutputTokens": 12000}}
+    request = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers={"Content-Type": "application/json", "x-goog-api-key": key}, method="POST")
+    with urllib.request.urlopen(request, timeout=120) as response:
+        data = json.loads(response.read().decode("utf-8"))
+    return "".join(part.get("text", "") for part in data["candidates"][0]["content"]["parts"])
+
+def _generate_with_claude(prompt: str) -> str:
+    if anthropic is None:
+        raise RuntimeError("Claude SDK is not installed.")
+    client = anthropic.Anthropic(api_key=os.environ["CLAUDE_API_KEY"])
+    versions = {}
+    for tier in ("tier1", "tier3", "tier5"):
+        tier_prompt = prompt + f"\nFor this call, return only the {tier} version as valid JSON with exactly this shape: {{\"content\":\"markdown lesson\"}}."
+        response = client.messages.create(model="claude-3-haiku-20240307", max_tokens=4096, messages=[{"role": "user", "content": tier_prompt}])
+        text = response.content[0].text.strip()
+        if text.startswith("```"):
+            text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.I)
+        versions[tier] = json.loads(text)["content"]
+    return json.dumps({"versions": versions})
+
+@app.post("/api/generate-lesson")
+def generate_lesson(req: LessonGenerationRequest):
+    topic = req.topic.strip()
+    if not topic or len(topic) > 160:
+        raise HTTPException(status_code=422, detail="Enter a topic between 1 and 160 characters.")
+    source_text = req.source_text.strip() if req.source_text else None
+    if source_text and len(source_text) > 18000:
+        source_text = source_text[:18000]
+    gemini_key = os.environ.get("GEMINI_API_KEY", "")
+    claude_key = os.environ.get("CLAUDE_API_KEY", "")
+    if not gemini_key and not claude_key:
+        raise HTTPException(status_code=503, detail="Custom lesson generation needs GEMINI_API_KEY or CLAUDE_API_KEY. Curated lessons and source-extractive document lessons remain available.")
+    prompt = _lesson_prompt(topic, source_text, req.source_reference)
+    providers = ([ ("gemini_ai", _generate_with_gemini) ] if gemini_key else []) + ([ ("claude_ai", _generate_with_claude) ] if claude_key else [])
+    errors = []
+    for provider_name, generate in providers:
+        try:
+            versions = _parse_lesson_json(generate(prompt))
+            estimates = {tier: {"words": len(re.findall(r"\b[\w'-]+\b", body)), "minutes": round(len(re.findall(r"\b[\w'-]+\b", body)) / 130, 1)} for tier, body in versions.items()}
+            return {"status": "success", "topic": topic, "versions": versions, "content_source": provider_name,
+                    "source_reference": req.source_reference if source_text else None, "reading_estimates": estimates}
+        except Exception as exc:
+            errors.append(provider_name)
+    # Never expose provider errors that might contain request details or credentials.
+    raise HTTPException(status_code=502, detail=f"Lesson generation failed for configured provider(s): {', '.join(errors)}. Check backend provider configuration and try again.")
+
+def _document_topics(text: str, filename: str, document_id: str):
+    """Split extracted text by headings; keep all lesson versions grounded in source text."""
+    sections = []
+    current_title, current_lines, current_page = "Overview", [], None
+    for line in text.splitlines():
+        stripped = line.strip()
+        clean = stripped.lstrip("#* ").strip().strip("*_")
+        is_heading = bool(re.match(r"^#{1,6}\s+", stripped) or re.match(r"^\*\*.+\*\*$", stripped))
+        is_heading = is_heading or (4 <= len(clean) <= 100 and len(clean.split()) <= 10 and clean.istitle() and not clean.endswith((".", ",", ";")))
+        if is_heading:
+            body = "\n".join(current_lines).strip()
+            if len(body) >= 80:
+                sections.append((current_title, body, current_page))
+            current_title, current_lines = clean, []
+            page_heading = re.fullmatch(r"Page (\d+)", current_title)
+            if page_heading:
+                current_page = int(page_heading.group(1))
+        else:
+            current_lines.append(line)
+    body = "\n".join(current_lines).strip()
+    if len(body) >= 80:
+        sections.append((current_title, body, current_page))
+    if not sections:
+        paragraphs = [p.strip() for p in re.split(r"\n\s*\n", text) if len(p.strip()) >= 120]
+        sections = [(f"Section {i + 1}", p, None) for i, p in enumerate(paragraphs[:8])]
+    result = []
+    for idx, (title, body, page_number) in enumerate(sections[:20]):
+        excerpt = body[:7000]
+        simplified = f"## {title} — Simplified\n\nKey points from {filename}:\n\n" + "\n\n".join(p[:450] for p in re.split(r"(?<=[.!?])\s+", excerpt)[:6])
+        standard = f"## {title} — Standard\n\n{excerpt}"
+        expert = f"## {title} — Expert / Challenging\n\nSource-grounded extension: compare the claims, assumptions, and evidence in this section.\n\n{excerpt}\n\n### Check your understanding\n- Which claim in this section is best supported by the source? Explain using its wording."
+        result.append({"id": f"{document_id}-{idx}", "name": title, "subtopics": [], "document_id": document_id,
+                       "source": {"document": filename, "section": title, "page": page_number},
+                       "versions": {"tier1": simplified, "tier3": standard, "tier5": expert}})
+    return result
+
+@app.post("/api/extract-topics")
+async def extract_topics(file: UploadFile = File(...)):
+    supplied_name = (file.filename or "upload").replace("\\", "/")
+    filename = re.sub(r"[\x00-\x1f]", "_", os.path.basename(supplied_name)).replace("..", "_")[:160]
+    suffix = os.path.splitext(filename)[1].lower()
+    if suffix not in (".pdf", ".txt"):
+        raise HTTPException(status_code=415, detail="Upload a PDF or TXT file.")
+    raw = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(raw) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File exceeds the 10 MB upload limit.")
+    if suffix == ".txt":
+        text = raw.decode("utf-8-sig", errors="replace")
+    else:
+        if not raw.startswith(b"%PDF-"):
+            raise HTTPException(status_code=400, detail="This file is not a valid PDF.")
+        try:
+            from pypdf import PdfReader
+            from io import BytesIO
+            reader = PdfReader(BytesIO(raw), strict=True)
+            if reader.is_encrypted:
+                raise HTTPException(status_code=400, detail="Password-protected PDFs are not supported.")
+            text = "\n\n".join(f"## Page {page_number}\n{page.extract_text() or ''}" for page_number, page in enumerate(reader.pages, start=1))
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"Could not read this PDF: {exc}")
+    if len(text.strip()) < 80:
+        detail = "No selectable text found; scanned or text-free PDFs need OCR before they can be used." if suffix == ".pdf" else "The text file is empty or too short to extract topics."
+        raise HTTPException(status_code=422, detail=detail)
+    document_id = uuid.uuid4().hex
+    topics = _document_topics(text, filename, document_id)
+    if not topics:
+        raise HTTPException(status_code=422, detail="Could not identify useful sections in this document.")
+    return {"status": "success", "document_id": document_id, "filename": filename, "topics": topics}
 
 def rewrite_with_claude(text: str, state: int) -> tuple[str, bool]:
     """
@@ -174,13 +336,15 @@ def get_adaptation(data: StudentData):
     # Step 2: Trigger Claude rewriting if key is configured
     final_text = adapted_text
     rewritten_by_claude = False
-    if data.cognitive_state in (1, 2):
+    if data.cognitive_state in (1, 2) and data.content_source not in ("document_extracted", "gemini_ai", "claude_ai"):
         rewritten_text, success = rewrite_with_claude(adapted_text, data.cognitive_state)
         if success:
             final_text = rewritten_text
             rewritten_by_claude = True
 
-    final_source = "claude_ai" if rewritten_by_claude else content_source
+    allowed_sources = ("document_extracted", "gemini_ai", "claude_ai", "curated_topic_library")
+    requested_source = data.content_source if data.content_source in allowed_sources else content_source
+    final_source = "claude_ai" if rewritten_by_claude else requested_source
 
     return {
         "status": "success",

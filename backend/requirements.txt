@@ -21,6 +21,7 @@ pandas==2.2.2              # Used in dummy_data_gen.py
 # ── CORS (for frontend connection) ──
 # Already included with fastapi, but explicitly listed:
 python-multipart==0.0.9
+pypdf>=4.2.0
 
 # ── Database (ORM & SQLite) ──
 sqlalchemy>=2.0.0

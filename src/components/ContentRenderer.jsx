@@ -12,9 +12,10 @@ const TIER_META = {
   tier5: { label: 'Expert',      color: '#fbbf24', bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.25)', dot: '#f59e0b' },
 };
 
-export default function ContentRenderer({ tier, topic }) {
+export default function ContentRenderer({ tier, topic, customVersions = null, activeOverrideText = null, contentSource = null }) {
   const meta = TIER_META[tier] || TIER_META.tier3;
-  const rawContent = getContent(topic, tier);
+  const rawContent = activeOverrideText || (customVersions && customVersions[tier]) || getContent(topic, tier);
+  const isQwen = contentSource?.includes('ollama') || contentSource?.includes('qwen');
 
   return (
     <div style={{ fontFamily: 'Inter, -apple-system, sans-serif' }}>
@@ -53,13 +54,13 @@ export default function ContentRenderer({ tier, topic }) {
             fontWeight: 700,
             padding: '3px 8px',
             borderRadius: 6,
-            background: 'rgba(255,255,255,0.03)',
-            color: 'var(--text-muted)',
-            border: '1px solid var(--border)',
+            background: isQwen ? 'rgba(99, 102, 241, 0.15)' : 'rgba(255,255,255,0.03)',
+            color: isQwen ? '#a5b4fc' : 'var(--text-muted)',
+            border: `1px solid ${isQwen ? 'rgba(99, 102, 241, 0.4)' : 'var(--border)'}`,
             letterSpacing: '0.03em',
           }}>
-            <Sparkles size={11} style={{ color: 'var(--indigo-light)' }} />
-            RAG Engine v2.4
+            <Sparkles size={11} style={{ color: isQwen ? '#818cf8' : 'var(--indigo-light)' }} />
+            {isQwen ? '⚡ Qwen 2.5 Local AI' : (customVersions ? 'Custom Syllabus' : 'RAG Engine v2.4')}
           </span>
         </div>
 

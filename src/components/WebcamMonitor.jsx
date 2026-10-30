@@ -238,14 +238,11 @@ export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggesti
           setDetectedState(label);
           setStateReason(data.reason || '');
 
-          // Update Cognitive Load Gauge (0 to 100)
-          let calculatedLoad = 48;
-          if (stateCode === 1) calculatedLoad = 82; // Overload
-          else if (stateCode === 2) calculatedLoad = 22; // Boredom
-          else calculatedLoad = 48; // Flow
+          // Update Cognitive Load Gauge (0 to 100 continuous score from Bayesian Ensemble)
+          const continuousLoad = data.cognitive_load !== undefined ? data.cognitive_load : (stateCode === 1 ? 82 : (stateCode === 2 ? 22 : 48));
           
           if (onCognitiveLoadUpdateRef.current) {
-            onCognitiveLoadUpdateRef.current(calculatedLoad);
+            onCognitiveLoadUpdateRef.current(continuousLoad);
           }
 
           // ── 30-Second Sustained Decision Rule ──

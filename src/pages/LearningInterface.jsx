@@ -135,7 +135,7 @@ function useSignalMonitor(isActive, currentTier) {
 export default function LearningInterface() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { subject, topicNames = [], selectedTopics = [] } = location.state || {};
+  const { subject, topicNames = [], selectedTopics = [], topicVersions = {} } = location.state || {};
 
   // Navigation guard
   useEffect(() => {
@@ -151,6 +151,8 @@ export default function LearningInterface() {
   const [contentFading,      setContentFading]      = useState(false);
   const [loadHistory,        setLoadHistory]        = useState([]);
   const [distractionFree,    setDistractionFree]    = useState(false);
+  const [activeOverrideText, setActiveOverrideText] = useState(null);
+  const [contentSource,      setContentSource]      = useState(null);
 
   const contentTopRef = useRef(null);
   const elapsedRef    = useRef(0);
@@ -175,13 +177,20 @@ export default function LearningInterface() {
     setLoadHistory(prev => [...prev.slice(-120), { t: elapsedRef.current, load: cogLoad }]);
   }, [cogLoad, isActive]);
 
-  // ── Change tier with a smooth fade + log the event ──
+  // ── Reset override text on topic navigation ──
+  useEffect(() => {
+    setActiveOverrideText(null);
+    setContentSource(null);
+  }, [currentTopicIndex]);
+
+  // ── Change tier with a smooth fade + real-time adaptation ──
   const changeTier = useCallback((newTier, reason = 'manual') => {
     if (newTier === currentTier) return;
     setContentFading(true);
     setTimeout(() => {
       const prevTier = currentTier;
       setCurrentTier(newTier);
+      setActiveOverrideText(null); // Reset override to display target tier base
       setAdaptationLog(prev => [...prev, {
         time: elapsedRef.current,
         from: prevTier,
@@ -192,8 +201,34 @@ export default function LearningInterface() {
         reason,
       }]);
       setContentFading(false);
+
+      // Trigger asynchronous real-time cognitive rewrite via local Ollama Qwen
+      if (reason === 'ai-suggested' || reason.startsWith('manual')) {
+        const cogState = (newTier === 'tier1') ? 1 : ((newTier === 'tier5') ? 2 : 0);
+        if (cogState !== 0) {
+          fetch('http://localhost:8000/api/adapt', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              cognitive_state: cogState,
+              current_level: newTier === 'tier1' ? 1 : (newTier === 'tier5' ? 5 : 3),
+              topic: currentTopic,
+              target_tier: newTier,
+              curated_content: (topicVersions[currentTopic] && topicVersions[currentTopic][newTier]) || null
+            })
+          })
+          .then(r => r.ok ? r.json() : null)
+          .then(data => {
+            if (data && data.content && data.content_source?.includes('ollama')) {
+              setActiveOverrideText(data.content);
+              setContentSource(data.content_source);
+            }
+          })
+          .catch(() => {});
+        }
+      }
     }, 280);
-  }, [currentTier, currentTopic]);
+  }, [currentTier, currentTopic, topicVersions]);
 
   // ── Manual difficulty controls ──
   const goSimpler = useCallback(() => {
@@ -512,7 +547,13 @@ export default function LearningInterface() {
                 minHeight: 400,
               }}
             >
-              <ContentRenderer tier={currentTier} topic={currentTopic} />
+              <ContentRenderer
+                tier={currentTier}
+                topic={currentTopic}
+                customVersions={topicVersions[currentTopic]}
+                activeOverrideText={activeOverrideText}
+                contentSource={contentSource}
+              />
             </div>
 
             {/* ── Dynamic Tier Control Bar at Bottom of Content ── */}

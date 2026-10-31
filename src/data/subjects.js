@@ -4,6 +4,7 @@
 // Computer Systems, AI, Cloud, Cybersecurity, Math, Finance & Humanities.
 // Also supports on-the-fly custom subject synthesis for ANY grade or domain.
 // ============================================================
+import { authoredLesson } from '../../shared/lessons.js';
 
 export const SUBJECTS = [
   // ── 1. EARLY CHILDHOOD: LKG & UKG ──
@@ -380,8 +381,9 @@ export function createCustomUniversalSubject(name, gradeLevel, customTopics = []
 // for ANY user input (Algorithms, AI, Systems, Math, Sciences, etc.)
 // ─────────────────────────────────────────────────────────────
 export function getContent(topic = 'Core Concept', tier = 'tier3') {
+  const authored = authoredLesson(topic, tier);
+  if (authored) return authored;
   const t = (topic || '').toLowerCase();
-  const cleanTitle = topic.replace(/[^a-zA-Z0-9]/g, '');
 
   // 1. Minimax & Game Theory & Adversarial Search
   if (t.includes('minimax') || t.includes('alpha-beta') || t.includes('alpha beta') || t.includes('game tree') || t.includes('adversarial') || t.includes('chess') || t.includes('game theory')) {
@@ -634,55 +636,7 @@ $$V(s) = \max_{a} \{ R(s, a) + \gamma V(T(s, a)) \}$$
 `;
   }
 
-  // 4. Default Dynamic Synthesizer (Intelligently structured for ANY topic)
-  return `## 🔵 ${topic} — Architecture, Invariants & Execution Flow
-
-### 1. Conceptual Blueprint & First Principles
-**${topic}** is a core operational construct. It provides formal principles, structural invariants, and deterministic mechanisms designed to solve specific boundary conditions without data loss or performance degradation.
-
-\`\`\`text
-┌────────────────────────────────────────────────────────────────────────┐
-│                     ${cleanTitle.toUpperCase().slice(0, 28)} EXECUTION TOPOLOGY           │
-│                                                                        │
-│   [ Inbound State / S_0 ] ──► [ Protocol Verification ]                │
-│                                        │                               │
-│                                        ▼                               │
-│                       [ Core Transformation Pipeline ]                 │
-│                                        │                               │
-│                                        ▼                               │
-│                       [ Committed Invariant Output ]                   │
-└────────────────────────────────────────────────────────────────────────┘
-\`\`\`
-
-### 2. Structural Invariants & Core Rules
-1. **Starting Boundary**: Input constraints and preconditions are validated prior to execution.
-2. **State Transformation**: Operations execute monotonically without corrupting intermediate states.
-3. **Convergence Guarantee**: Every execution path reaches a deterministic termination point with verified correctness.
-
-### 3. Complexity & Operational Performance Matrix
-| Dimension | Best Case | Average Case | Worst Case | Space Complexity |
-|---|---|---|---|---|
-| Execution Pace | O(1) | O(1) or O(log N) | O(N) | O(1) auxiliary |
-| Memory Footprint | O(1) | O(1) amortized | O(N) | O(N) total |
-
-### 4. Canonical Implementation Pattern
-\`\`\`python
-class ${cleanTitle || 'Universal'}Controller:
-    '''
-    Production implementation of ${topic} enforcing strict state invariants.
-    '''
-    def __init__(self):
-        self._state = []
-        self._ready = True
-
-    def process_step(self, item):
-        if not self._ready:
-            raise RuntimeError("Pipeline not ready for transition")
-        # Invariant execution
-        self._state.append(item)
-        return {"status": "committed", "count": len(self._state)}
-\`\`\`
-`;
+  return `## ${topic}\n\nA checked course note for this exact topic is not available. The study session will show one only after it stays on this subject and finishes every section.`;
 }
 
 // ─────────────────────────────────────────────────────────────

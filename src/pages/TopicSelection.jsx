@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import Navbar from '../components/Navbar';
-import { SUBJECTS, generateCustomLessonVersions } from '../data/subjects';
+import { SUBJECTS } from '../data/subjects';
 import { sounds } from '../utils/soundEffects';
 import { 
   ArrowLeft, 
@@ -99,15 +99,9 @@ export default function TopicSelection() {
         throw new Error('No structured topics could be identified.');
       }
     } catch (err) {
-      console.warn('Real PDF extraction notice, using structured fallback:', err);
-      const fallbackTopics = [
-        { id: 'ext-1', name: 'Module 1: Foundational Principles & Architecture', subtopics: ['System Axioms', 'Cognitive Boundaries', 'Design Primitives'] },
-        { id: 'ext-2', name: 'Module 2: Algorithmic Mechanics & State Machines', subtopics: ['Transition Invariants', 'Complexity Bounds', 'Heuristic Parsing'] },
-        { id: 'ext-3', name: 'Module 3: Empirical Optimization & Evaluation', subtopics: ['Statistical Benchmarks', 'Loss Topology', 'Ablation Analysis'] },
-        { id: 'ext-4', name: 'Module 4: Real-World Systems & Case Studies', subtopics: ['Production Deployments', 'Fault Isolation', 'Scaling Invariants'] },
-      ];
-      setExtractedTopics(fallbackTopics);
-      setSelectedTopics(fallbackTopics.map(t => t.id));
+      setExtractedTopics([]);
+      setSelectedTopics([]);
+      setSynthesizeStatus(err?.message || 'That file could not be read. Use a PDF or TXT file with selectable text.');
     } finally {
       setExtracting(false);
     }
@@ -117,51 +111,23 @@ export default function TopicSelection() {
     const topicText = customTopicInput.trim();
     if (!topicText) return;
     setIsSynthesizing(true);
-    setSynthesizeStatus('Synthesizing custom multi-tier curriculum for ' + topicText + '...');
-
-    let generatedVersions = null;
-
-    try {
-      // 2.0-second race with local backend (if active)
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject('timeout'), 2000));
-      const fetchPromise = fetch('http://localhost:8000/api/generate-lesson', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topic: topicText }),
-      }).then(res => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json();
-      });
-
-      const data = await Promise.race([fetchPromise, timeoutPromise]);
-      if (data && data.versions && data.versions.tier3) {
-        generatedVersions = data.versions;
-      }
-    } catch (err) {
-      // Backend offline or busy — immediately use instant educational synthesizer engine
-    }
-
-    // Always synthesize tailored multi-tier curriculum (never empty or generic!)
-    if (!generatedVersions) {
-      generatedVersions = generateCustomLessonVersions(topicText);
-    }
+    setSynthesizeStatus(`“${topicText}” will be written from the local model when you open the session.`);
 
     const newModule = {
       id: `custom-${topicText.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${Date.now()}`,
       name: topicText,
       subtopics: [
-        `${topicText} Foundations & Intuition`,
-        `${topicText} Core Architecture & Mechanics`,
-        `${topicText} Invariants & Advanced Bounds`
+        `What ${topicText} is`,
+        `An example of ${topicText}`,
+        `A common mistake about ${topicText}`,
       ],
-      versions: generatedVersions,
       isAiGenerated: true,
     };
 
     setCustomTopicsList(prev => [...prev, newModule]);
     setSelectedTopics(prev => [...prev, newModule.id]);
     setCustomTopicInput('');
-    setSynthesizeStatus(`✨ Custom curriculum for "${topicText}" synthesized successfully!`);
+    setSynthesizeStatus(`“${topicText}” will be explained when you open the session.`);
     setTimeout(() => setSynthesizeStatus(''), 4500);
     setIsSynthesizing(false);
   };

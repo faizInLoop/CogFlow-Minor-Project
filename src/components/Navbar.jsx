@@ -208,7 +208,7 @@ export default function Navbar({ currentStep = 0, session = null }) {
               width: 5, height: 5, borderRadius: '50%', background: '#34d399',
               boxShadow: '0 0 6px #34d399', animation: 'pulseGlow 2s infinite ease-in-out'
             }} />
-            Qwen 2.5
+            Local lesson
           </div>
 
           {/* Sound Toggle Button */}

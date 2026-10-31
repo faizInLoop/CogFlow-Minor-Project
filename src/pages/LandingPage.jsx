@@ -4,7 +4,6 @@ import Navbar from '../components/Navbar';
 import SpotlightCard from '../components/SpotlightCard';
 import NeuralWaveform from '../components/NeuralWaveform';
 import BiometricPlayground from '../components/BiometricPlayground';
-import ArchitectureVisualizer from '../components/ArchitectureVisualizer';
 import { sounds } from '../utils/soundEffects';
 import {
   Brain, ScanFace, Cpu, Layers, Zap, BarChart3, ArrowRight,
@@ -65,47 +64,27 @@ const DOMAIN_CHIPS = [
 const TIER_PREVIEWS = {
   tier1: {
     badge: 'B-Tier Foundations',
-    subtitle: 'Intuitive mental models, ASCII memory layouts, and clean zero-jargon analogies.',
-    title: 'Raft Consensus: The Leader & Log Notebook Analogy',
-    body: `Think of a distributed cluster as a classroom of students trying to keep an identical notebook:
+    subtitle: 'Plain language, same facts.',
+    title: 'Consensus and a network split',
+    body: `Consensus means several computers agree on one value even if some of them fail. The CAP idea says that during a network split you cannot have perfect consistency and perfect availability at the same time.
 
-1. One student is elected the "Note-Taker" (Leader).
-2. Whenever the teacher says something new (Client Write Request), only the Note-Taker writes it down in pencil first.
-3. The Note-Taker sends copies of the sentence to the other students (Followers).
-4. As soon as more than half the classroom confirms they received it (Quorum), the Note-Taker pens it down in ink (Committed).
-5. If the Note-Taker steps out, the students immediately hold a quick vote to elect a new one!`,
-    diagram: `[Client] ──Write──> [Leader]
-                        │
-         ┌──────────────┴──────────────┐
-         ▼                             ▼
-   [Follower A]                  [Follower B]`
+If a network break separates a cluster, one side can stop accepting writes so it does not disagree with the other side. That choice favors consistency. The other choice is to keep accepting writes and repair later.`
   },
   tier3: {
-    badge: 'A-Tier Core Engineering',
-    subtitle: 'Production architectural blueprints, RPC mechanics, and state machine invariants.',
-    title: 'Raft Protocol: Term Invariants & AppendEntries RPC',
-    body: `Raft decomposes consensus into three independent sub-problems:
+    badge: 'A-Tier Core',
+    subtitle: 'The standard statement, with one example.',
+    title: 'Raft, majority, and CAP',
+    body: `A consensus protocol such as Raft elects a leader and replicates a log. An entry is committed when a majority has stored it. A later leader must contain all committed entries, which is how the protocol avoids losing an agreed value.
 
-• Leader Election: Randomized election timeouts (150ms-300ms) prevent split-vote deadlocks. Candidates increment 'currentTerm' and broadcast RequestVote RPCs.
-• Log Replication: The Leader accepts entries from clients, assigns monotonic indices, and issues AppendEntries RPCs. Entries are committed once stored on a majority (N/2 + 1) nodes.
-• Log Matching Property: If two logs contain an entry with the same index and term, they are identical up to that index. The leader never overwrites its own log entries.`,
-    diagram: `State Machine:
-[Follower] ──(Timeout)──> [Candidate] ──(Majority Votes)──> [Leader]
-    ▲                           │                              │
-    └──────(Discovers Higher Term / Valid Leader)──────────────┘`
+In a cluster of five, a partition of 3 and 2 lets the group of 3 elect a leader and commit. The group of 2 cannot commit, because it is not a majority.`
   },
   tier5: {
-    badge: 'S-Tier Staff & Research',
-    subtitle: 'Formal safety proofs, network partition split-brain analysis, and fsync disk bottlenecks.',
-    title: 'Formal Safety Invariants & Asymmetric Partition Recovery',
-    body: `At the storage engine and formal verification boundary:
+    badge: 'S-Tier Detail',
+    subtitle: 'Definitions kept distinct.',
+    title: 'Safety, linearizability, and the minority side',
+    body: `Raft safety depends on election rules and on the leader log. A candidate can win only if its log is at least as up to date as a majority. That prevents a leader from being elected without committed entries.
 
-• State Machine Safety: If a server applies log entry at index i to its state machine, no other server will ever apply a different entry for index i. Raft guarantees this through the Election Restriction: a voter rejects a candidate whose log is less up-to-date than its own ((lastLogTerm, lastLogIndex) lexicographical check).
-• Commit Rule Invariant: A leader CANNOT commit a log entry from a previous term by simply counting replicas; it must commit at least one entry from its current term by majority replication.
-• Production Fsync Bottleneck: Group commit batching and write-ahead log (WAL) preallocation are mandatory to mitigate NVMe sync latency under high write concurrency.`,
-    diagram: `Split-Brain Partition Invariant:
-Cluster {N=5}: Partition [A, B] (Quorum=2 < 3) vs [C, D, E] (Quorum=3 >= 3)
-=> Minority partition cannot commit client writes; uncommitted entries rolled back on reconciliation.`
+Availability in the CAP sense means every request to a non-failed node gets a response. Linearizability means operations appear to happen in one order that matches real time. A partitioned minority that still answers writes cannot promise that order.`
   }
 };
 
@@ -260,7 +239,7 @@ export default function LandingPage() {
                     </span>
                   </div>
                   <h3 style={{ fontSize: 22, fontWeight: 800, color: '#ffffff' }}>
-                    How Local Qwen Synthesizes Curriculum On-The-Fly
+                    A course note, at three depths
                   </h3>
                 </div>
 
@@ -305,7 +284,7 @@ export default function LandingPage() {
                     {preview.badge} · {preview.subtitle}
                   </span>
                   <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: "'JetBrains Mono', monospace" }}>
-                    Synthesized by Qwen 2.5 Coder
+                    Course note
                   </span>
                 </div>
 
@@ -314,26 +293,10 @@ export default function LandingPage() {
                 </h4>
 
                 <p style={{
-                  fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.7, whiteSpace: 'pre-line', marginBottom: 18
+                  fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.7, whiteSpace: 'pre-line', marginBottom: 0
                 }}>
                   {preview.body}
                 </p>
-
-                {preview.diagram && (
-                  <pre style={{
-                    background: 'var(--bg-card)',
-                    border: '1px solid rgba(129,140,248,0.2)',
-                    borderRadius: 10,
-                    padding: '14px 18px',
-                    fontFamily: "'JetBrains Mono', monospace",
-                    fontSize: 12,
-                    color: '#c7d2fe',
-                    overflowX: 'auto',
-                    lineHeight: 1.5
-                  }}>
-                    {preview.diagram}
-                  </pre>
-                )}
               </div>
             </div>
           </div>
@@ -354,17 +317,6 @@ export default function LandingPage() {
       }}>
         <div className="container" style={{ maxWidth: 1080 }}>
           <BiometricPlayground />
-        </div>
-      </section>
-
-      {/* ── SYSTEM ARCHITECTURE TOPOLOGY ── */}
-      <section style={{
-        padding: '30px 0 70px',
-        position: 'relative',
-        zIndex: 1,
-      }}>
-        <div className="container" style={{ maxWidth: 1080 }}>
-          <ArchitectureVisualizer />
         </div>
       </section>
 

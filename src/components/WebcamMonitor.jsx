@@ -1,13 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Camera, CameraOff, Eye, EyeOff, AlertCircle, Brain, Sparkles, Activity } from 'lucide-react';
-import { WINDOW_SIZE } from '../../shared/cognitiveFeatures';
+import { CHANNELS, WINDOW_SIZE } from '../../shared/cognitiveFeatures';
 
 export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggestion, onFaceActive }) {
   const [cameraActive, setCameraActive] = useState(false);
   const [showPreview, setShowPreview] = useState(true);
-  const [isCalibrating, setIsCalibrating] = useState(false);
-  const [calibProgress, setCalibProgress] = useState(0);
   const [modelReady, setModelReady] = useState(false);
+  const [channels, setChannels] = useState(null);
+  const [windowCount, setWindowCount] = useState(0);
   
   // Real-time analysis states
   const [detectedState, setDetectedState] = useState('Idle');
@@ -90,16 +90,29 @@ export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggesti
       }
 
       setCameraActive(true);
-      setIsCalibrating(true);
-      setCalibProgress(0);
-      calibSamplesRef.current = [];
+      setChannels(null);
+      setWindowCount(0);
       sustainedSecsRef.current = 0;
       setSustainedSeconds(0);
-      setDetectedState('Calibrating (0/5s)');
-      setStateReason('Look naturally at the screen to establish personal baseline');
+      setDetectedState('Reading');
+      setStateReason('The expression matrix updates with each frame. The class matrix uses 11 frames.');
     } catch (err) {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+      }
       console.error('Error opening webcam:', err);
-      setErrorMsg('Could not access webcam. Please verify camera permissions in your browser.');
+      const name = err?.name || '';
+      const message = name === 'NotAllowedError' || name === 'PermissionDeniedError'
+        ? 'Camera permission was blocked. Allow the camera for this site in the browser site settings, then press Enable AI again.'
+        : name === 'NotFoundError' || name === 'DevicesNotFoundError'
+          ? 'No camera was found on this computer.'
+          : name === 'NotReadableError' || name === 'TrackStartError'
+            ? 'The camera is already open in another app or browser tab. Close that app, then press Enable AI again.'
+            : name === 'NotSupportedError' || name === 'SecurityError'
+              ? 'The camera can only start on localhost or https.'
+              : `The camera did not start (${name || 'unknown error'}).`;
+      setErrorMsg(message);
       setCameraActive(false);
     }
   };
@@ -115,7 +128,8 @@ export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggesti
       videoRef.current.srcObject = null;
     }
     setCameraActive(false);
-    setIsCalibrating(false);
+    setChannels(null);
+    setWindowCount(0);
     setDetectedState('Idle');
     setStateReason('Camera inactive');
     setSustainedSeconds(0);
@@ -174,6 +188,8 @@ export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggesti
         frames.push(vector);
         if (frames.length > WINDOW_SIZE) frames.shift();
         onFaceActiveRef.current?.(true);
+        setChannels(vector);
+        setWindowCount(frames.length);
         setMetrics({
           neutral: vector[6],
           happy: vector[3],
@@ -181,15 +197,12 @@ export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggesti
         });
 
         if (frames.length < WINDOW_SIZE) {
-          setIsCalibrating(true);
-          setCalibProgress(frames.length);
-          setDetectedState(`Calibrating (${frames.length}/${WINDOW_SIZE})`);
-          setStateReason('Look at the lesson naturally while the on-device model fills an 11-frame window.');
+          setDetectedState('Reading');
+          setStateReason(`Expression matrix is live. Class matrix uses ${frames.length}/${WINDOW_SIZE} frames.`);
           return;
         }
 
         const data = engine.classificationFromWindow(stack, frames);
-        setIsCalibrating(false);
         setConfidence(data.confidence);
         setProbabilities(data.probabilities);
         setDetectedState(data.state_label);
@@ -372,7 +385,7 @@ export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggesti
               </div>
 
               {/* Confidence Badge Top Right */}
-              {confidence > 0 && !isCalibrating && (
+              {confidence > 0 && windowCount >= WINDOW_SIZE && (
                 <div style={{
                   position: 'absolute', bottom: 8, left: 8,
                   background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)',
@@ -440,57 +453,70 @@ export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggesti
               {stateReason}
             </div>
 
-            {/* Neural Probabilities Mini-bar */}
-            {!isCalibrating && probabilities && (
-              <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: 'var(--text-muted)', marginBottom: 3 }}>
-                  <span style={{ color: '#10b981' }}>Flow {Math.round((probabilities.flow || 0)*100)}%</span>
-                  <span style={{ color: '#f43f5e' }}>Overload {Math.round((probabilities.overload || 0)*100)}%</span>
-                  <span style={{ color: '#f59e0b' }}>Boredom {Math.round((probabilities.boredom || 0)*100)}%</span>
-                </div>
-                <div style={{ display: 'flex', height: 4, borderRadius: 2, overflow: 'hidden', background: 'rgba(255,255,255,0.06)' }}>
-                  <div style={{ width: `${(probabilities.flow || 0)*100}%`, background: '#10b981' }} />
-                  <div style={{ width: `${(probabilities.overload || 0)*100}%`, background: '#f43f5e' }} />
-                  <div style={{ width: `${(probabilities.boredom || 0)*100}%`, background: '#f59e0b' }} />
-                </div>
-              </div>
-            )}
           </div>
 
-          {/* 30-Second Sustained Bar */}
-          {!isCalibrating ? (
+          {channels && (
             <div style={{ background: 'rgba(255,255,255,0.02)', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-muted)', marginBottom: 4 }}>
-                <span>Sustained {sustainedState}</span>
-                <span style={{ fontWeight: 700, color: sustainedSeconds >= 20 ? '#fda4af' : 'var(--text-secondary)' }}>
-                  {sustainedSeconds}s / 30s
-                </span>
+              <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 6 }}>
+                Expression matrix
               </div>
-              <div style={{
-                height: 5, borderRadius: 99, background: 'rgba(255,255,255,0.06)', overflow: 'hidden'
-              }}>
-                <div style={{
-                  height: '100%',
-                  width: `${Math.min(100, (sustainedSeconds / 30) * 100)}%`,
-                  background: sustainedState === 'Overload' ? 'var(--rose)' : (sustainedState === 'Boredom' ? 'var(--amber)' : 'var(--emerald)'),
-                  transition: 'width 0.9s linear'
-                }} />
-              </div>
-              <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 4 }}>
-                ⏱️ 30s sustained trigger prevents false adaptation
-              </div>
-            </div>
-          ) : (
-            <div style={{ background: 'rgba(99,102,241,0.06)', padding: '8px 10px', borderRadius: 8, border: '1px solid rgba(99,102,241,0.2)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--indigo-light)', marginBottom: 4 }}>
-                <span>Calibrating Personal Baseline</span>
-                <span style={{ fontWeight: 700 }}>{calibProgress}/{WINDOW_SIZE}</span>
-              </div>
-              <div style={{ height: 4, borderRadius: 99, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${(calibProgress / WINDOW_SIZE) * 100}%`, background: 'var(--indigo-light)', transition: 'width 0.5s ease' }} />
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 6 }}>
+                {CHANNELS.map((name, index) => (
+                  <div key={name} style={{ minWidth: 0 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: 'var(--text-muted)', marginBottom: 2 }}>
+                      <span>{name}</span>
+                      <span>{Math.round((channels[index] || 0) * 100)}%</span>
+                    </div>
+                    <div style={{ height: 4, borderRadius: 99, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${Math.round((channels[index] || 0) * 100)}%`, background: '#818cf8' }} />
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           )}
+
+          <div style={{ background: 'rgba(255,255,255,0.02)', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 6 }}>
+              <span>Class matrix</span>
+              <span>{windowCount}/{WINDOW_SIZE}</span>
+            </div>
+            {[
+              ['Flow', probabilities.flow, '#10b981'],
+              ['Overload', probabilities.overload, '#f43f5e'],
+              ['Boredom', probabilities.boredom, '#f59e0b'],
+            ].map(([label, value, color]) => (
+              <div key={label} style={{ display: 'grid', gridTemplateColumns: '72px 1fr 36px', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <span style={{ fontSize: 11, color }}>{label}</span>
+                <div style={{ height: 6, borderRadius: 99, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${Math.round((value || 0) * 100)}%`, background: color }} />
+                </div>
+                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', textAlign: 'right' }}>
+                  {windowCount >= WINDOW_SIZE ? `${Math.round((value || 0) * 100)}%` : '—'}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ background: 'rgba(255,255,255,0.02)', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-muted)', marginBottom: 4 }}>
+              <span>Sustained {sustainedState}</span>
+              <span style={{ fontWeight: 700, color: sustainedSeconds >= 20 ? '#fda4af' : 'var(--text-secondary)' }}>
+                {sustainedSeconds}s / 30s
+              </span>
+            </div>
+            <div style={{ height: 5, borderRadius: 99, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
+              <div style={{
+                height: '100%',
+                width: `${Math.min(100, (sustainedSeconds / 30) * 100)}%`,
+                background: sustainedState === 'Overload' ? 'var(--rose)' : (sustainedState === 'Boredom' ? 'var(--amber)' : 'var(--emerald)'),
+                transition: 'width 0.9s linear'
+              }} />
+            </div>
+            <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 4 }}>
+              A simpler or harder suggestion waits until that class stays ahead for 30 seconds.
+            </div>
+          </div>
         </div>
       ) : (
         <div style={{

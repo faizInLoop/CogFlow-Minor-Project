@@ -7,34 +7,30 @@ const PREVIEW_CONTENT = {
     tier: 'Tier 1 · Simplified',
     color: '#34d399',
     bg: 'rgba(52,211,153,0.12)',
-    title: 'Core Intuition (Bullet Points & Visual Analogies)',
+    title: 'Data structures, in plain language',
     body: [
-      '• Think of a neural network like a team of specialized detectives.',
-      '• Each layer looks for simple clues (edges, corners, textures).',
-      '• Higher layers combine clues to recognize complex concepts like a face or a sentence.',
-      '• Key Takeaway: Break big problems into simpler sequential decisions.'
+      'A data structure is a way to organize values so a program can store and find them. An array keeps values in one block. A linked list keeps values in separate nodes joined by pointers.',
+      'Memory hierarchy is separate. The CPU has a few very fast registers, then small caches, then larger RAM, then a much slower disk.'
     ]
   },
   tier3: {
     tier: 'Tier 3 · Standard',
     color: '#818cf8',
     bg: 'rgba(99,102,241,0.12)',
-    title: 'Formal Architectural Analysis',
+    title: 'Data structures and the memory hierarchy',
     body: [
-      'Recurrent neural architectures process sequential input tokens by preserving a hidden state vector h_t across time steps.',
-      'Through backpropagation through time (BPTT), gradients update weight matrices W_xh and W_hh to model short-term contextual dependencies.',
-      'Standard formulation: h_t = tanh(W_xh * x_t + W_hh * h_{t-1} + b_h).'
+      'An array stores items in contiguous addresses, so the address of index i is base + i × item size. That is why index access is O(1). A linked list stores nodes separately, so reaching index i takes O(i) steps.',
+      'A hash table is O(1) on average when collisions stay short. A balanced search tree keeps search, insert, and delete at O(log n).'
     ]
   },
   tier5: {
     tier: 'Tier 5 · Expert Depth',
     color: '#fbbf24',
     bg: 'rgba(245,158,11,0.12)',
-    title: 'Mathematical Rigor & Asymptotics',
+    title: 'Cache lines, amortized append, and disk',
     body: [
-      'Vanishing and exploding gradients occur when the spectral radius of W_hh exceeds or falls strictly below unity.',
-      'BiLSTM mitigates this using constant error carousels (CEC) governed by affine gates: f_t = σ(W_f [h_{t-1}, x_t] + b_f).',
-      'The forward-backward hidden passes yield an aggregate feature space dim(H) = 2 × d_h with temporal attention alignment.'
+      'Cache lines are the unit the CPU fetches, often 64 bytes. An array scan uses those bytes. Pointer chasing does not.',
+      'A dynamic array resize copies n items occasionally. Spread over later insertions, append is amortized O(1). A B+ tree keeps many keys in one node so a disk page holds a useful fanout.'
     ]
   }
 };
@@ -128,7 +124,7 @@ export default function BiometricPlayground() {
             Live DAiSEE expression model
           </h3>
           <p style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginTop: 4, maxWidth: 540 }}>
-            Drag the facial tension and interaction telemetry sliders below to watch the inference model recalculate cognitive load and rewrite curriculum depth.
+            These sliders only preview which depth of the data-structures note is shown. They are not the live face model.
           </p>
         </div>
 
@@ -300,7 +296,7 @@ export default function BiometricPlayground() {
               transition: 'border-color 0.3s ease',
             }}>
               <div style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', color: preview.color, letterSpacing: '0.06em', marginBottom: 6 }}>
-                Dynamic RAG Synthesis · {preview.title}
+                Course note · {preview.title}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {preview.body.map((line, idx) => (

@@ -48,3 +48,4 @@ backend/cogflow.db
 
 # Embedded MongoDB files created at runtime
 server/data/mongo/
+server/data/lesson-cache.json

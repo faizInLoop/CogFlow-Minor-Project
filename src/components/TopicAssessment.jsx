@@ -1,68 +1,26 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { generateDynamicQuiz, evaluateStudentAnswer } from '../services/api';
-import { QUIZ_BANK } from '../data/quizBank';
+import { findCuratedQuiz } from '../data/quizBank';
 import {
   Sparkles, CheckCircle2, XCircle, AlertCircle, HelpCircle,
   Brain, Send, Loader2, Award, ArrowRight, RefreshCw, PenTool, Lightbulb, Check, ChevronDown, ChevronUp
 } from 'lucide-react';
 
-// ─────────────────────────────────────────────────────────────
-// Instant Diagnostic Quiz Resolver (0ms Zero-Latency Fallback)
-// ─────────────────────────────────────────────────────────────
-function getCuratedQuiz(topic, tier) {
-  if (QUIZ_BANK[topic]) return QUIZ_BANK[topic];
-  
-  const lower = (topic || '').toLowerCase();
-  for (const [key, val] of Object.entries(QUIZ_BANK)) {
-    if (lower.includes(key.toLowerCase()) || key.toLowerCase().includes(lower)) {
-      return val;
-    }
-  }
-
-  // Domain-adaptive fallback generator
-  return {
-    mcqs: [
-      {
-        id: 'q1',
-        question: `In the study of ${topic}, what is the primary structural foundation that must be maintained?`,
-        options: [
-          `Clear input-output invariants and boundary conditions specific to ${topic}.`,
-          `Unconstrained execution without memory or state tracking.`,
-          `Complete isolation from the surrounding conceptual hierarchy.`,
-          `Continuous random state mutation without verification.`
-        ],
-        correctIndex: 0,
-        explanation: `Fundamental principles require explicit boundaries and structural invariants to ensure consistent outcomes in ${topic}.`
-      },
-      {
-        id: 'q2',
-        question: `When transitioning between simplified and advanced tiers in ${topic}, what trade-off is typically balanced?`,
-        options: [
-          'Conceptual abstraction and intuitive speed vs. rigorous mathematical or asymptotic depth.',
-          'Physical storage limits vs. network transmission bitrate.',
-          'Visual aesthetics vs. color harmony palette.',
-          'Typing velocity vs. mouse pointer acceleration.'
-        ],
-        correctIndex: 0,
-        explanation: 'Adaptive mastery balances intuitive visual analogies at early tiers with rigorous formal invariants at expert tiers.'
-      }
-    ],
-    typingPrompt: {
-      question: `Synthesize the core mechanics of ${topic}. What invariant or fundamental rule ensures its correct execution?`,
-      rubricKeywords: ['invariant', 'mechanics', 'structure', 'balance', 'execution', 'principle'],
-      placeholder: `Explain how ${topic} operates, including key stages, dependencies, and real-world outcomes...`
-    }
-  };
+// Saved question banks stay as written. Other topics wait for the local model.
+function savedQuiz(topic) {
+  return findCuratedQuiz(topic);
 }
 
 export default function TopicAssessment({
   topicName,
   subtopicName = null,
   tier = 'tier3',
+  lessonText = '',
   cognitiveLoad = 50.0,
   onAssessmentComplete = () => {},
   initialResults = null
 }) {
+  const [quizError, setQuizError] = useState('');
   const [loadingQuiz, setLoadingQuiz] = useState(true);
   const [quizData, setQuizData] = useState(null);
   const [selectedAnswers, setSelectedAnswers] = useState({});
@@ -92,35 +50,57 @@ export default function TopicAssessment({
     setAiEvaluation(initialResults?.aiEvaluation || null);
     setAssessmentCompleted(!!initialResults?.completed);
 
-    // 1. Immediately provide curated diagnostic quiz (0ms, zero lag!)
-    const immediateQuiz = getCuratedQuiz(topicName, tier);
-    setQuizData(immediateQuiz);
-    setLoadingQuiz(false);
+    const saved = savedQuiz(topicName);
+    if (saved) {
+      setQuizData(saved);
+      setQuizError('');
+      setLoadingQuiz(false);
+      return undefined;
+    }
 
-    // 2. Background attempt to fetch dynamically personalized questions
-    async function backgroundQuizUpgrade() {
+    if (!lessonText || lessonText.length < 400) {
+      setQuizData(null);
+      setQuizError('');
+      setLoadingQuiz(true);
+      return undefined;
+    }
+
+    setQuizData(null);
+    setQuizError('');
+    setLoadingQuiz(true);
+    const controller = new AbortController();
+
+    async function writeQuestions() {
       try {
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject('timeout'), 1600));
-        const data = await Promise.race([
-          generateDynamicQuiz({
-            topic: topicName,
-            subtopic: subtopicName,
-            tier: tier,
-            cognitive_load: cognitiveLoad
-          }),
-          timeoutPromise
-        ]);
-        if (!isCancelled && data && data.mcqs && data.mcqs.length > 0) {
+        const data = await generateDynamicQuiz({
+          topic: topicName,
+          subtopic: subtopicName,
+          tier,
+          content_snippet: lessonText,
+          signal: controller.signal,
+        });
+        if (!isCancelled && data?.mcqs?.length) {
           setQuizData(data);
+          setLoadingQuiz(false);
+        } else if (!isCancelled) {
+          setQuizError('Questions for this topic could not be written.');
+          setLoadingQuiz(false);
         }
       } catch (err) {
-        // Quietly preserve the immediate curated quiz
+        if (isCancelled || err?.name === 'AbortError') return;
+        if (!isCancelled) {
+          setQuizError(err?.message || 'The local model did not write questions for this topic.');
+          setLoadingQuiz(false);
+        }
       }
     }
 
-    backgroundQuizUpgrade();
-    return () => { isCancelled = true; };
-  }, [topicName, subtopicName, tier]);
+    writeQuestions();
+    return () => {
+      isCancelled = true;
+      controller.abort();
+    };
+  }, [topicName, subtopicName, tier, lessonText]);
 
   const handleSelectOption = (qId, optionIdx, correctIdx) => {
     if (selectedAnswers[qId] !== undefined) return; // Locked once answered
@@ -144,7 +124,8 @@ export default function TopicAssessment({
         topic: topicName,
         question: typingPromptQuestion,
         student_answer: text,
-        tier: tier
+        tier: tier,
+        lesson: lessonText,
       });
 
       if (data && data.score !== undefined) {
@@ -154,32 +135,14 @@ export default function TopicAssessment({
         throw new Error('Invalid evaluation response');
       }
     } catch (err) {
-      console.warn('[Assessment] Using dynamic rubric grading fallback:', err);
-      const keywords = quizData?.typingPrompt?.rubricKeywords || ['complexity', 'trade-off', 'performance', 'invariants'];
-      const lower = text.toLowerCase();
-      const matched = keywords.filter(k => lower.includes(k.toLowerCase()));
-      const wordCount = text.split(/\s+/).length;
-      
-      let score = 55;
-      score += Math.min(25, matched.length * 8);
-      score += Math.min(18, Math.floor(wordCount / 5));
-      score = Math.min(96, Math.max(50, score));
-
-      let verdict = 'Partially Proficient';
-      if (score >= 85) verdict = 'S-Tier Mastery';
-      else if (score >= 70) verdict = 'A-Tier Proficient';
-
-      const fallbackEvaluation = {
-        score,
-        verdict,
-        strengths: `Clear reasoning (${wordCount} words) touching on core principles: ${matched.join(', ') || 'fundamental invariants'}.`,
-        key_points_covered: matched.length > 0 ? matched : ['System principles'],
-        missing_or_misunderstood: keywords.filter(k => !lower.includes(k.toLowerCase())).slice(0, 2),
-        constructive_feedback: `Strong response! To push to top-percentile depth, consider explicitly detailing memory layout alignment and edge-case failure modes under scale.`
-      };
-
-      setAiEvaluation(fallbackEvaluation);
-      completeAssessment(fallbackEvaluation);
+      setAiEvaluation({
+        score: null,
+        verdict: 'Not checked',
+        strengths: '',
+        key_points_covered: [],
+        missing_or_misunderstood: [],
+        constructive_feedback: err?.message || 'The answer could not be checked against the topic. Make sure Ollama is running, then try again.',
+      });
     } finally {
       setIsEvaluating(false);
     }
@@ -273,7 +236,7 @@ export default function TopicAssessment({
               </span>
             </div>
             <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
-              Synthesized then-and-there by Qwen AI to test real conceptual depth and active recall.
+              Questions stay on this topic. A saved set is used when one exists.
             </p>
           </div>
         </div>
@@ -285,12 +248,11 @@ export default function TopicAssessment({
             color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: 6
           }}>
             <Sparkles size={13} style={{ color: '#818cf8' }} />
-            Qwen 2.5 Dynamic Generation
+            Questions for this topic
           </span>
         </div>
       </div>
 
-      {/* Loading State Skeleton */}
       {loadingQuiz ? (
         <div style={{
           padding: '48px 24px', textAlign: 'center',
@@ -303,11 +265,15 @@ export default function TopicAssessment({
             animation: 'spin 0.9s linear infinite'
           }} />
           <div style={{ fontSize: 14, fontWeight: 700, color: '#e2e8f0' }}>
-            Qwen AI is generating personalized {currentBadge.label} assessment...
+            Writing questions from the checked lesson
           </div>
           <p style={{ fontSize: 12, color: 'var(--text-muted)', maxWidth: 420 }}>
-            Calibrating dynamic MCQs, invariant checks, and active recall challenges tailored specifically to {topicName}.
+            These questions wait until the lesson is ready, and they use only that lesson.
           </p>
+        </div>
+      ) : quizError ? (
+        <div style={{ padding: '36px 24px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+          {quizError}
         </div>
       ) : (
         <div>
@@ -456,7 +422,7 @@ export default function TopicAssessment({
                 fontSize: 10, fontWeight: 800, color: '#a5b4fc',
                 background: 'rgba(99, 102, 241, 0.15)', padding: '3px 8px', borderRadius: 6
               }}>
-                ⚡ Evaluated live by Qwen
+                Checked against this lesson
               </span>
             </div>
 
@@ -538,12 +504,12 @@ export default function TopicAssessment({
                 {isEvaluating ? (
                   <>
                     <Loader2 size={14} className="animate-spin" />
-                    Qwen AI is evaluating your explanation...
+                    Checking your answer against the lesson...
                   </>
                 ) : (
                   <>
                     <Send size={14} />
-                    Evaluate My Explanation with Local Qwen AI
+                    Check my explanation
                   </>
                 )}
               </button>
@@ -563,6 +529,7 @@ export default function TopicAssessment({
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    {Number.isFinite(aiEvaluation.score) && (
                     <div style={{
                       width: 44, height: 44, borderRadius: '50%',
                       background: aiEvaluation.score >= 80 ? 'rgba(52, 211, 153, 0.2)' : 'rgba(245, 158, 11, 0.2)',
@@ -573,18 +540,19 @@ export default function TopicAssessment({
                     }}>
                       {aiEvaluation.score}
                     </div>
+                    )}
                     <div>
                       <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 800, textTransform: 'uppercase' }}>
-                        Active Recall Score
+                        {Number.isFinite(aiEvaluation.score) ? 'Active Recall Score' : 'Answer check'}
                       </div>
                       <div style={{ fontSize: 14, fontWeight: 800, color: '#ffffff' }}>
-                        {aiEvaluation.verdict || 'Proficient'}
+                        {aiEvaluation.verdict || 'Not checked'}
                       </div>
                     </div>
                   </div>
 
                   <span style={{ fontSize: 11, color: '#a5b4fc', background: 'rgba(99,102,241,0.2)', padding: '3px 8px', borderRadius: 6 }}>
-                    Evaluator: {aiEvaluation.evaluator || 'Qwen 2.5 Coder'}
+                    Checked against the lesson
                   </span>
                 </div>
 

@@ -28,7 +28,7 @@ export default function ChoosePath() {
               Choose your learning pathway
             </h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: 15.5, maxWidth: 580, margin: '0 auto', lineHeight: 1.6 }}>
-              Explore subjects from Kindergarten (LKG/UKG) to University & Research, prompt Qwen to synthesize any custom topic, or upload syllabus notes.
+              Explore a catalog, name any subject, or upload notes. The lesson is written for that subject and checked before you see it.
             </p>
           </div>
 
@@ -133,7 +133,7 @@ export default function ChoosePath() {
                 </h2>
 
                 <p style={{ color: 'var(--text-secondary)', fontSize: 13.5, lineHeight: 1.65, marginBottom: 22 }}>
-                  Type ANY subject (e.g. 2nd class Solar System, Ancient Egypt, Raft Consensus, French Basics) and Qwen generates diagrams and lessons on the fly.
+                  Type a subject such as 2nd class Solar System, Ancient Egypt, or fractions. The lesson is written for that subject, without diagrams.
                 </p>
 
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 28 }}>

@@ -110,47 +110,81 @@ export async function getUserAnalytics(userId = 'usr_default') {
 
 // ── On-The-Fly Dynamic Qwen AI Content & Quiz Services ──
 
-export async function generateDynamicContent({ subject = 'Computer Science', topic, subtopic = null, tier = 'tier3', cognitive_state = 0, angle = 'default' }) {
-  try {
-    const res = await fetch(`${API_BASE}/api/generate-content`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ subject, topic, subtopic, tier, cognitive_state, angle }),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
-  } catch (err) {
-    console.warn('[API] generateDynamicContent error:', err);
-    return null;
+export async function streamDynamicContent({ subject = 'General study', topic, subtopic = null, tier = 'tier3', angle = 'default', signal, onDelta }) {
+  const res = await fetch(`${API_BASE}/api/generate-content`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ subject, topic, subtopic, tier, angle }),
+    signal,
+  });
+  if (!res.ok) {
+    let detail = `HTTP ${res.status}`;
+    try {
+      const body = await res.json();
+      detail = body.detail || detail;
+    } catch {
+      // The error body was not JSON.
+    }
+    throw new Error(detail);
   }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let pending = '';
+  let latest = null;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    pending += decoder.decode(value, { stream: true });
+    const lines = pending.split('\n');
+    pending = lines.pop() || '';
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      const msg = JSON.parse(line);
+      if (msg.type === 'delta') onDelta?.(msg.text);
+      if (msg.type === 'done') latest = msg;
+      if (msg.type === 'error') throw new Error(msg.message || 'The lesson could not be written.');
+    }
+  }
+  if (!latest?.content) throw new Error('The local model returned an empty lesson.');
+  return latest;
 }
 
-export async function generateDynamicQuiz({ topic, subtopic = null, tier = 'tier3', cognitive_load = 50.0, content_snippet = null }) {
-  try {
-    const res = await fetch(`${API_BASE}/api/generate-quiz`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ topic, subtopic, tier, cognitive_load, content_snippet }),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
-  } catch (err) {
-    console.warn('[API] generateDynamicQuiz error:', err);
-    return null;
+export async function generateDynamicQuiz({ topic, subtopic = null, tier = 'tier3', cognitive_load = 50.0, content_snippet = null, signal }) {
+  const res = await fetch(`${API_BASE}/api/generate-quiz`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ topic, subtopic, tier, cognitive_load, content_snippet }),
+    signal,
+  });
+  if (!res.ok) {
+    let detail = `HTTP ${res.status}`;
+    try {
+      const body = await res.json();
+      detail = body.detail || detail;
+    } catch {
+      // The error body was not JSON.
+    }
+    throw new Error(detail);
   }
+  return await res.json();
 }
 
-export async function evaluateStudentAnswer({ topic, question, student_answer, tier = 'tier3' }) {
-  try {
-    const res = await fetch(`${API_BASE}/api/evaluate-answer`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ topic, question, student_answer, tier }),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
-  } catch (err) {
-    console.warn('[API] evaluateStudentAnswer error:', err);
-    return null;
+export async function evaluateStudentAnswer({ topic, question, student_answer, tier = 'tier3', lesson = '' }) {
+  const res = await fetch(`${API_BASE}/api/evaluate-answer`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ topic, question, student_answer, tier, lesson }),
+  });
+  if (!res.ok) {
+    let detail = `HTTP ${res.status}`;
+    try {
+      const body = await res.json();
+      detail = body.detail || detail;
+    } catch {
+      // The error body was not JSON.
+    }
+    throw new Error(detail);
   }
+  return await res.json();
 }

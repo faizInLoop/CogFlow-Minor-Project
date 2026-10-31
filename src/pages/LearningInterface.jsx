@@ -3,11 +3,11 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import CognitiveLoadGauge from '../components/CognitiveLoadGauge';
 import SessionTimeline from '../components/SessionTimeline';
-import ContentRenderer, { getEducationalImageUrl, triggerFileDownload } from '../components/ContentRenderer';
+import ContentRenderer, { triggerFileDownload } from '../components/ContentRenderer';
 import TopicAssessment from '../components/TopicAssessment';
 import WebcamMonitor from '../components/WebcamMonitor';
-import { SUBJECTS, getContent } from '../data/subjects';
-import { saveSession, generateDynamicContent } from '../services/api';
+import { SUBJECTS } from '../data/subjects';
+import { saveSession, streamDynamicContent } from '../services/api';
 import { useUser } from '../context/UserContext';
 import {
   Brain, ArrowLeft, ArrowRight, CheckCircle2, Sliders, Activity,
@@ -200,11 +200,8 @@ export default function LearningInterface() {
   const [topicAssessments,   setTopicAssessments]   = useState({});
   const [isSynthesizing,     setIsSynthesizing]     = useState(false);
   const [dynamicContent,     setDynamicContent]     = useState(null);
-  const [dynamicImageUrl,    setDynamicImageUrl]    = useState(null);
   const [selectedAngle,      setSelectedAngle]      = useState('default');
   const [reGenTrigger,       setReGenTrigger]       = useState(0);
-  const contentCacheRef                             = useRef({});
-
   const contentTopRef = useRef(null);
   const elapsedRef    = useRef(0);
 
@@ -257,71 +254,53 @@ export default function LearningInterface() {
     setContentSource(null);
   }, [currentTopicIndex]);
 
-  // Instantaneous curriculum presentation + background dynamic refinement
+  const uploadedLesson = topicVersions[currentTopic]?.[currentTier] || '';
+
+  // A lesson is either the student's uploaded notes, or text written for this exact topic.
   useEffect(() => {
     let isCancelled = false;
-    const cacheKey = `${currentTopic}:${currentTier}:${selectedAngle}:${reGenTrigger}`;
-    const fallbackImageUrl = getEducationalImageUrl(currentTopic);
-
-    // 1. Instant Cache hit (0ms)
-    if (contentCacheRef.current[cacheKey]) {
-      setDynamicContent(contentCacheRef.current[cacheKey].content);
-      setContentSource(contentCacheRef.current[cacheKey].source);
-      if (contentCacheRef.current[cacheKey].imageUrl) {
-        setDynamicImageUrl(contentCacheRef.current[cacheKey].imageUrl);
-      }
-      setIsSynthesizing(false);
-      return;
-    }
-
-    // 2. Uploaded syllabus version (0ms)
-    if (topicVersions[currentTopic]?.[currentTier]) {
-      setDynamicContent(topicVersions[currentTopic][currentTier]);
+    if (uploadedLesson) {
+      setDynamicContent(uploadedLesson);
       setContentSource('uploaded_syllabus');
       setIsSynthesizing(false);
-      return;
+      return undefined;
     }
 
-    // 3. Immediately show verified curriculum lesson (0ms delay! NEVER block user with a spinner)
-    const baseContent = getContent(currentTopic, currentTier);
-    setDynamicContent(baseContent);
-    setContentSource('adaptive_core_curriculum');
-    setDynamicImageUrl(fallbackImageUrl);
-
-    // 4. Background asynchronous refinement
+    setDynamicContent('');
+    setContentSource('writing');
     setIsSynthesizing(true);
-    async function backgroundRefine() {
+    const controller = new AbortController();
+
+    async function writeLesson() {
       try {
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject('timeout'), 1800));
-        const fetchPromise = generateDynamicContent({
+        const data = await streamDynamicContent({
           subject,
           topic: currentTopic,
           tier: currentTier,
-          cognitive_state: cogLoad < 35 ? 2 : cogLoad > 70 ? 1 : 0,
           angle: selectedAngle,
+          signal: controller.signal,
         });
-
-        const data = await Promise.race([fetchPromise, timeoutPromise]);
-        if (!isCancelled && data && data.content) {
-          contentCacheRef.current[cacheKey] = {
-            content: data.content,
-            source: data.content_source || 'qwen_dynamic',
-            imageUrl: data.image_url || fallbackImageUrl,
-          };
+        if (!isCancelled && data?.content) {
           setDynamicContent(data.content);
-          setContentSource(data.content_source || 'qwen_dynamic');
-          if (data.image_url) setDynamicImageUrl(data.image_url);
+          setContentSource(data.content_source || 'ollama_qwen_dynamic');
         }
       } catch (err) {
-        // Quietly maintain verified base content
+        if (isCancelled || err?.name === 'AbortError') return;
+        if (!isCancelled) {
+          setDynamicContent(`## Lesson not ready\n\n${err?.message || 'The local model did not answer.'}\n\nPress Re-Synthesize after Ollama is running.`);
+          setContentSource('error');
+        }
       } finally {
         if (!isCancelled) setIsSynthesizing(false);
       }
     }
 
-    backgroundRefine();
-    return () => { isCancelled = true; };
-  }, [currentTopic, currentTier, selectedAngle, reGenTrigger, topicVersions, subject]);
+    writeLesson();
+    return () => {
+      isCancelled = true;
+      controller.abort();
+    };
+  }, [currentTopic, currentTier, selectedAngle, reGenTrigger, subject, uploadedLesson]);
 
   // Change tier with a smooth fade + real-time adaptation
   const changeTier = useCallback((newTier, reason = 'manual') => {
@@ -663,10 +642,10 @@ export default function LearningInterface() {
                 <Sparkles size={13} style={{ color: '#818cf8' }} />
                 <span>Angle:</span>
                 {[
-                  { id: 'default', label: 'Balanced Core' },
-                  { id: 'visual_metaphor', label: '🎨 Visual Metaphor' },
-                  { id: 'production_failure', label: '💥 Incident Post-Mortem' },
-                  { id: 'code_deepdive', label: '💻 Code Implementation' }
+                  { id: 'default', label: 'Clear explanation' },
+                  { id: 'visual_metaphor', label: 'Everyday example' },
+                  { id: 'production_failure', label: 'Common mistake' },
+                  { id: 'code_deepdive', label: 'Short code example' }
                 ].map(a => (
                   <button
                     key={a.id}
@@ -694,7 +673,7 @@ export default function LearningInterface() {
                     padding: '2px 8px', borderRadius: 6
                   }}>
                     <RefreshCw size={10} style={{ animation: 'spin 1.2s linear infinite' }} />
-                    <span>AI Refining...</span>
+                    <span>Checking the lesson…</span>
                   </div>
                 )}
               </div>
@@ -703,7 +682,7 @@ export default function LearningInterface() {
                 <button
                   onClick={() => {
                     const filename = `${currentTopic.replace(/[^a-zA-Z0-9_-]/g, '_')}-StudyNotes.md`;
-                    const notesContent = `# ${currentTopic} — Study Guide\nTier: ${currentTierMeta.label} (${currentTierMeta.short})\nSubject: ${subject}\n\n---\n\n${dynamicContent || activeOverrideText || getContent(currentTopic, currentTier)}`;
+                    const notesContent = `# ${currentTopic} — Study Guide\nTier: ${currentTierMeta.label} (${currentTierMeta.short})\nSubject: ${subject}\n\n---\n\n${dynamicContent || activeOverrideText || ''}`;
                     triggerFileDownload(filename, notesContent, 'text/markdown;charset=utf-8');
                   }}
                   title="Download complete study notes as Markdown"
@@ -755,7 +734,6 @@ export default function LearningInterface() {
                 customVersions={topicVersions[currentTopic]}
                 activeOverrideText={dynamicContent || activeOverrideText}
                 contentSource={contentSource}
-                imageUrl={dynamicImageUrl}
               />
             </div>
 
@@ -841,6 +819,7 @@ export default function LearningInterface() {
           <TopicAssessment
             topicName={currentTopic}
             tier={currentTier}
+            lessonText={contentSource === 'ollama_qwen_dynamic' || contentSource === 'uploaded_syllabus' ? (dynamicContent || uploadedLesson) : ''}
             cognitiveLoad={cogLoad}
             onAssessmentComplete={handleAssessmentComplete}
             initialResults={topicAssessments[currentTopic]}

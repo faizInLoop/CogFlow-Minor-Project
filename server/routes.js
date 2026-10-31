@@ -5,13 +5,17 @@ import express from 'express';
 import multer from 'multer';
 import { fileURLToPath } from 'url';
 import { User, LearningSession, TopicProgress } from './models.js';
+import { adaptationPayload } from './content.js';
 import {
-  adaptationPayload,
-  buildDynamicContent,
-  buildLessonResponse,
-  buildQuiz,
-  evaluateAnswer,
-} from './content.js';
+  cachedLesson,
+  gradeAnswer,
+  lessonIsReady,
+  lessonKey,
+  ollamaStatus,
+  writeCheckedLesson,
+  writeQuiz,
+} from './ollama.js';
+import { authoredLesson } from '../shared/lessons.js';
 import { textFromUpload, topicsFromText } from './documents.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -43,13 +47,16 @@ router.get('/', (_req, res) => {
   });
 });
 
-router.get('/api/ai-status', (_req, res) => {
+router.get('/api/ai-status', async (_req, res) => {
+  const ollama = await ollamaStatus();
   res.json({
-    status: 'online',
-    primary_provider: 'cogflow_curriculum',
-    model: fs.existsSync(metricsPath) ? 'daisee-tfjs' : 'untrained',
+    status: ollama.online ? 'online' : 'offline',
+    primary_provider: 'ollama',
+    model: ollama.model,
+    model_installed: ollama.installed,
     face: 'browser',
     frames_uploaded: false,
+    cognitive_model: fs.existsSync(metricsPath) ? 'daisee-tfjs' : 'untrained',
   });
 });
 
@@ -81,39 +88,106 @@ router.post('/api/generate-lesson', (req, res) => {
     res.status(422).json({ detail: 'Enter a topic between 1 and 160 characters.' });
     return;
   }
-  res.json(buildLessonResponse(topic));
+  res.json({
+    status: 'success',
+    topic,
+    versions: null,
+    content_source: 'written_when_opened',
+    message: 'The lesson is written from the local model when the study session opens.',
+  });
 });
 
-router.post('/api/generate-content', (req, res) => {
-  const topic = String(req.body?.topic || '').trim();
+router.post('/api/generate-content', async (req, res) => {
+  const topic = String(req.body?.topic || req.body?.subtopic || '').trim();
   if (!topic) {
     res.status(422).json({ detail: 'Topic is required.' });
     return;
   }
   const tier = TIERS.has(req.body?.tier) ? req.body.tier : 'tier3';
-  res.json(buildDynamicContent({
-    topic,
-    subtopic: req.body?.subtopic ? String(req.body.subtopic) : null,
-    tier,
-    angle: req.body?.angle || 'default',
-  }));
+  const angle = String(req.body?.angle || 'default');
+  const subject = String(req.body?.subject || 'General study');
+  const key = lessonKey({ topic, tier, angle });
+  const saved = cachedLesson(key);
+
+  res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('X-Accel-Buffering', 'no');
+
+  const send = (payload) => {
+    res.write(`${JSON.stringify(payload)}\n`);
+  };
+
+  const authored = authoredLesson(topic, tier);
+  if (authored) {
+    send({ type: 'done', content: authored, content_source: 'course_notes', cached: true, topic, tier });
+    res.end();
+    return;
+  }
+
+  if (saved && lessonIsReady(topic, saved)) {
+    send({ type: 'done', content: saved, content_source: 'ollama_qwen_dynamic', cached: true, topic, tier });
+    res.end();
+    return;
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 420000);
+  res.on('close', () => {
+    if (!res.writableEnded) controller.abort();
+  });
+  try {
+    send({ type: 'status', message: `Checking a lesson on ${topic} before it is shown.` });
+    const content = await writeCheckedLesson({
+      subject,
+      topic,
+      tier,
+      angle,
+      signal: controller.signal,
+    });
+    send({ type: 'done', content, content_source: 'ollama_qwen_dynamic', cached: false, topic, tier });
+    res.end();
+  } catch (error) {
+    const message = controller.signal.aborted
+      ? 'The lesson writer was stopped.'
+      : `The local model did not finish this lesson. Check that Ollama is running (${error.message || 'no response'}).`;
+    if (!res.headersSent) {
+      res.status(503).json({ status: 'error', detail: message });
+      return;
+    }
+    send({ type: 'error', message });
+    res.end();
+  } finally {
+    clearTimeout(timer);
+  }
 });
 
-router.post('/api/generate-quiz', (req, res) => {
-  const topic = String(req.body?.topic || '').trim();
+router.post('/api/generate-quiz', async (req, res) => {
+  const topic = String(req.body?.topic || req.body?.subtopic || '').trim();
   if (!topic) {
     res.status(422).json({ detail: 'Topic is required.' });
     return;
   }
   const tier = TIERS.has(req.body?.tier) ? req.body.tier : 'tier3';
-  res.json(buildQuiz({
-    topic,
-    subtopic: req.body?.subtopic ? String(req.body.subtopic) : null,
-    tier,
-  }));
+  try {
+    const quiz = await writeQuiz({
+      topic,
+      tier,
+      lesson: String(req.body?.content_snippet || ''),
+      signal: AbortSignal.timeout(300000),
+    });
+    res.json({
+      status: 'success',
+      topic,
+      tier,
+      generator: 'ollama',
+      ...quiz,
+    });
+  } catch (error) {
+    res.status(503).json({ status: 'error', detail: error.message || 'Could not write questions for this topic.' });
+  }
 });
 
-router.post('/api/evaluate-answer', (req, res) => {
+router.post('/api/evaluate-answer', async (req, res) => {
   const topic = String(req.body?.topic || '').trim();
   const question = String(req.body?.question || '').trim();
   const studentAnswer = String(req.body?.student_answer || '').trim();
@@ -121,12 +195,20 @@ router.post('/api/evaluate-answer', (req, res) => {
     res.status(422).json({ detail: 'Answer text cannot be empty.' });
     return;
   }
-  res.json(evaluateAnswer({
-    topic,
-    question,
-    studentAnswer,
-    tier: TIERS.has(req.body?.tier) ? req.body.tier : 'tier3',
-  }));
+  try {
+    res.json(await gradeAnswer({
+      topic,
+      question,
+      studentAnswer,
+      lesson: String(req.body?.lesson || ''),
+      signal: AbortSignal.timeout(120000),
+    }));
+  } catch (error) {
+    res.status(503).json({
+      status: 'error',
+      detail: error.message || 'The answer could not be checked against the lesson.',
+    });
+  }
 });
 
 router.post('/api/extract-topics', upload.single('file'), async (req, res) => {

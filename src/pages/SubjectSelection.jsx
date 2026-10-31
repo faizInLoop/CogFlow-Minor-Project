@@ -147,7 +147,7 @@ export default function SubjectSelection() {
                 Universal Subjects & Technical Tracks
               </h1>
               <p style={{ color: 'var(--text-secondary)', fontSize: 14, maxWidth: 640 }}>
-                From Kindergarten foundations to staff engineering invariants — or synthesize any custom curriculum on demand with Qwen AI.
+                From early school to advanced study. A lesson is written for the subject you choose and checked before it is shown.
               </p>
             </div>
 
@@ -452,7 +452,7 @@ export default function SubjectSelection() {
                   + Design Any Custom Subject or Grade
                 </h3>
                 <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.55 }}>
-                  Want LKG Phonics, Class 2 Math, Ancient Rome, Astronomy, French, or Quantum Hardware? Qwen synthesizes full custom diagrams, lessons, and quizzes.
+                  Name a subject such as class 2 math, Ancient Rome, or the water cycle. The note stays on that subject.
                 </p>
               </div>
 
@@ -487,7 +487,7 @@ export default function SubjectSelection() {
                   No pre-built tracks matching &ldquo;{search}&rdquo;
                 </h3>
                 <p style={{ fontSize: 13.5, color: 'var(--text-secondary)', maxWidth: 440, margin: '0 auto 20px' }}>
-                  Qwen AI can synthesize a complete curriculum for &ldquo;{search}&rdquo; right now with dynamic diagrams, lessons, and adaptive checks.
+                  A course note can be opened for “{search}” when that subject is checked.
                 </p>
                 <button
                   onClick={() => {
@@ -619,7 +619,7 @@ export default function SubjectSelection() {
             </div>
 
             <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 20, lineHeight: 1.5 }}>
-              Enter any topic from Nursery/LKG to Graduate Research. Qwen AI will dynamically generate customized visual diagrams, lessons, and quizzes!
+              Enter a topic from early school through advanced study. The note has to stay on that topic.
             </p>
 
             <form onSubmit={handleCreateCustom}>

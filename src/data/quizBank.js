@@ -547,49 +547,20 @@ export const QUIZ_BANK = {
 };
 
 /**
- * Helper to fetch or generate fallback assessment for any topic
+ * A saved quiz is used only when the topic name actually matches a bank entry.
+ * Unknown topics return null so the local model can write questions for that topic.
  */
-export function getTopicAssessment(topicName) {
-  if (QUIZ_BANK[topicName]) {
-    return QUIZ_BANK[topicName];
+export function findCuratedQuiz(topicName) {
+  if (!topicName) return null;
+  if (QUIZ_BANK[topicName]) return QUIZ_BANK[topicName];
+  const lower = topicName.toLowerCase();
+  for (const [key, value] of Object.entries(QUIZ_BANK)) {
+    const name = key.toLowerCase();
+    if (name.length >= 8 && (lower.includes(name) || name.includes(lower))) return value;
   }
+  return null;
+}
 
-  // Generic fallback if topic is custom
-  return {
-    mcqs: [
-      {
-        id: `${topicName}-q1`,
-        question: `What is the primary architectural principle governing ${topicName}?`,
-        options: [
-          `Optimizing computational throughput while maintaining correctness and systemic invariants.`,
-          `Minimizing physical disk space by deleting redundant state representations.`,
-          `Replacing all algorithms with static linear look-up tables.`,
-          `Executing all instructions in sequential single-threaded hardware mode.`
-        ],
-        correctIndex: 0,
-        explanation: `In ${topicName}, the core engineering goal is balancing theoretical correctness, asymptotic bounds, and system efficiency.`
-      },
-      {
-        id: `${topicName}-q2`,
-        question: `Which trade-off is most prominent when scaling ${topicName} in production environments?`,
-        options: [
-          `Memory overhead and cache efficiency versus algorithmic time complexity.`,
-          `Monolithic source code length versus physical display resolution.`,
-          `Network packet MTU size versus cooling fan speed.`,
-          `Number of developer comments versus compiler optimization flags.`
-        ],
-        correctIndex: 0,
-        explanation: `System scaling requires continually balancing memory footprint, spatial locality, and computational bounds.`
-      }
-    ],
-    typingPrompt: {
-      question: `Summarize the foundational principles of ${topicName}. What problem does it solve, what are its trade-offs, and where is it used in production?`,
-      sampleGoodPoints: [
-        `Clear definition of the core abstraction and its purpose.`,
-        `Analysis of performance bounds (time and memory complexity).`,
-        `Practical edge cases and production engineering applications.`
-      ],
-      rubricKeywords: ['efficiency', 'complexity', 'trade-off', 'performance', 'production', 'architecture']
-    }
-  };
+export function getTopicAssessment(topicName) {
+  return findCuratedQuiz(topicName);
 }

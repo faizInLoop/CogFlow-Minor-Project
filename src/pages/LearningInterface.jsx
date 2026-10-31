@@ -3,14 +3,16 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import CognitiveLoadGauge from '../components/CognitiveLoadGauge';
 import SessionTimeline from '../components/SessionTimeline';
-import ContentRenderer from '../components/ContentRenderer';
+import ContentRenderer, { getEducationalImageUrl, triggerFileDownload } from '../components/ContentRenderer';
+import TopicAssessment from '../components/TopicAssessment';
 import WebcamMonitor from '../components/WebcamMonitor';
-import { saveSession } from '../services/api';
+import { SUBJECTS } from '../data/subjects';
+import { saveSession, generateDynamicContent } from '../services/api';
 import { useUser } from '../context/UserContext';
 import {
   Brain, ArrowLeft, ArrowRight, CheckCircle2, Sliders, Activity,
   MousePointer, Scroll, Keyboard, Sparkles, AlertCircle, Clock,
-  Maximize2, Minimize2, Eye, ShieldCheck, ChevronRight, Zap, Check, X
+  Maximize2, Minimize2, Eye, ShieldCheck, ChevronRight, Zap, Check, X, RefreshCw, BookOpen, Download, FileText
 } from 'lucide-react';
 
 // ─────────────────────────────────────────────────────────────
@@ -18,9 +20,9 @@ import {
 // ─────────────────────────────────────────────────────────────
 const TIERS = ['tier1', 'tier3', 'tier5'];
 const TIER_META = {
-  tier1: { key: '1', label: 'Simplified', short: 'Simplified', color: '#34d399', bg: 'rgba(52,211,153,0.12)', border: 'rgba(52,211,153,0.25)', badge: 'badge-emerald' },
-  tier3: { key: '2', label: 'Standard',   short: 'Standard',   color: '#818cf8', bg: 'rgba(99,102,241,0.12)', border: 'rgba(99,102,241,0.25)', badge: 'badge-indigo'  },
-  tier5: { key: '3', label: 'Expert',     short: 'Expert',     color: '#fbbf24', bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.25)', badge: 'badge-amber'   },
+  tier1: { key: '1', label: 'Simplified', short: 'B-Tier Foundations', color: '#34d399', bg: 'rgba(52,211,153,0.12)', border: 'rgba(52,211,153,0.3)', badge: 'badge-emerald' },
+  tier3: { key: '2', label: 'Standard',   short: 'A-Tier Core',        color: '#818cf8', bg: 'rgba(99,102,241,0.12)', border: 'rgba(99,102,241,0.3)', badge: 'badge-indigo'  },
+  tier5: { key: '3', label: 'Expert',     short: 'S-Tier Staff',       color: '#fbbf24', bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.3)', badge: 'badge-amber'   },
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -32,62 +34,71 @@ function useSignalMonitor(isActive, currentTier) {
   const [suggestion, setSuggestion]   = useState(null);  // 'simpler' | 'harder' | null
   const [dismissed, setDismissed]     = useState(false); // user dismissed current suggestion
   const mouseHistory   = useRef([]);
-  const lastScrollY    = useRef(0);
+  const lastScrollY    = useRef(typeof window !== 'undefined' ? window.scrollY : 0);
+  const scrollDeltaAcc = useRef(0);
   const keystrokeTs    = useRef([]);
-  const signalBuffer   = useRef([]);   // rolling window for telemetry classification
-  const observeSince   = useRef(null); // timestamp when current-tier observation started
+  const signalBuffer   = useRef([]);
+  const observeSince   = useRef(Date.now());
   const currentTierRef = useRef(currentTier);
-
-  useEffect(() => {
-    currentTierRef.current = currentTier;
-    observeSince.current = Date.now();
-    setSuggestion(null);
-    setDismissed(false);
-  }, [currentTier]);
+  currentTierRef.current = currentTier;
 
   useEffect(() => {
     if (!isActive) return;
 
-    observeSince.current = Date.now();
-
     const onMouseMove = (e) => {
-      mouseHistory.current.push({ x: e.clientX, y: e.clientY, t: Date.now() });
-      if (mouseHistory.current.length > 12) mouseHistory.current.shift();
+      const now = Date.now();
+      mouseHistory.current.push({ x: e.clientX, y: e.clientY, t: now });
+      if (mouseHistory.current.length > 8) mouseHistory.current.shift();
     };
 
+    // Low-overhead accumulator: ZERO React re-renders on scroll
     const onScroll = () => {
       const dy = Math.abs(window.scrollY - lastScrollY.current);
       lastScrollY.current = window.scrollY;
-      setSignals(prev => ({ ...prev, scrollRate: Math.min(100, Math.round(dy * 2.5)) }));
+      scrollDeltaAcc.current += dy;
     };
 
+    // Low-overhead accumulator: ZERO React re-renders on keystroke
     const onKeyDown = () => {
       const now = Date.now();
       keystrokeTs.current.push(now);
-      if (keystrokeTs.current.length > 6) keystrokeTs.current.shift();
-      if (keystrokeTs.current.length > 1) {
-        const gaps = keystrokeTs.current.slice(1).map((t, i) => t - keystrokeTs.current[i]);
-        const avg = gaps.reduce((a, b) => a + b, 0) / gaps.length;
-        setSignals(prev => ({ ...prev, typingPace: Math.round(Math.max(0, 100 - avg / 5)) }));
-      }
+      if (keystrokeTs.current.length > 10) keystrokeTs.current.shift();
     };
 
+    // Batched single-tick telemetry update (runs once every 1000ms, eliminates UI stutter)
     const velTick = setInterval(() => {
+      let vel = 0;
       if (mouseHistory.current.length >= 2) {
         const a = mouseHistory.current[0];
         const b = mouseHistory.current[mouseHistory.current.length - 1];
         const dt = (b.t - a.t) / 1000;
         const dist = Math.sqrt((b.x - a.x) ** 2 + (b.y - a.y) ** 2);
-        const vel = dt > 0 ? Math.min(100, dist / dt / 3) : 0;
-        setSignals(prev => ({ ...prev, mouseVelocity: Math.round(vel) }));
-        signalBuffer.current.push(vel);
-        if (signalBuffer.current.length > 60) signalBuffer.current.shift();
+        vel = dt > 0 ? Math.min(100, dist / dt / 3) : 0;
       }
+
+      const scrollRate = Math.min(100, Math.round(scrollDeltaAcc.current * 0.15));
+      scrollDeltaAcc.current = 0; // reset for next 1s interval
+
+      let typingPace = 0;
+      if (keystrokeTs.current.length > 1) {
+        const gaps = keystrokeTs.current.slice(1).map((t, i) => t - keystrokeTs.current[i]);
+        const avg = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+        typingPace = Math.round(Math.max(0, 100 - avg / 5));
+      }
+
+      setSignals({
+        mouseVelocity: Math.round(vel),
+        scrollRate,
+        typingPace
+      });
+
+      signalBuffer.current.push(vel);
+      if (signalBuffer.current.length > 60) signalBuffer.current.shift();
     }, 1000);
 
     const classifyTick = setInterval(() => {
       const elapsedSinceChange = (Date.now() - (observeSince.current || Date.now())) / 1000;
-      if (elapsedSinceChange < 45) return;
+      if (elapsedSinceChange < 30) return;
       if (dismissed) return;
 
       const buf = signalBuffer.current;
@@ -103,12 +114,12 @@ function useSignalMonitor(isActive, currentTier) {
       const tier = currentTierRef.current;
       const tierIdx = TIERS.indexOf(tier);
 
-      if (load < 30 && tierIdx < TIERS.length - 1) {
+      if (load < 32 && tierIdx < TIERS.length - 1) {
         setSuggestion('harder');
-      } else if (load > 72 && tierIdx > 0) {
+      } else if (load > 70 && tierIdx > 0) {
         setSuggestion('simpler');
       }
-    }, 30000);
+    }, 25000);
 
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('scroll', onScroll);
@@ -125,25 +136,56 @@ function useSignalMonitor(isActive, currentTier) {
   const dismissSuggestion = useCallback(() => {
     setSuggestion(null);
     setDismissed(true);
-    setTimeout(() => setDismissed(false), 60000);
+    setTimeout(() => setDismissed(false), 45000);
   }, []);
 
   return { signals, cogLoad, setCogLoad, suggestion, setSuggestion, dismissSuggestion };
 }
 
 // ─────────────────────────────────────────────────────────────
+// Main Interactive Learning Cockpit Component
+// ─────────────────────────────────────────────────────────────
 export default function LearningInterface() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { subject, topicNames = [], selectedTopics = [] } = location.state || {};
+  const navState = location.state || {};
 
-  // Navigation guard
+  // Retrieve cached session or initialize safe fallback
+  const getStoredSession = () => {
+    try {
+      const data = sessionStorage.getItem('cogflow_active_session');
+      return data ? JSON.parse(data) : null;
+    } catch { return null; }
+  };
+  const stored = getStoredSession();
+
+  // Active Subject resolution (NEVER null)
+  const defaultSubject = SUBJECTS[0];
+  const subject = navState.subject || stored?.subject || defaultSubject.name;
+  
+  // Active Topics resolution (NEVER empty)
+  const defaultTopicNames = defaultSubject.topics.slice(0, 5).map(t => t.name);
+  const topicNames = (navState.topicNames && navState.topicNames.length > 0)
+    ? navState.topicNames
+    : (stored?.topicNames && stored.topicNames.length > 0)
+    ? stored.topicNames
+    : defaultTopicNames;
+
+  const topicVersions = navState.topicVersions || stored?.topicVersions || {};
+
+  // Persist session to survive browser reloads
   useEffect(() => {
-    if (!subject || topicNames.length === 0) navigate('/');
-  }, [subject, topicNames, navigate]);
+    try {
+      sessionStorage.setItem('cogflow_active_session', JSON.stringify({
+        subject,
+        topicNames,
+        topicVersions
+      }));
+    } catch {}
+  }, [subject, topicNames, topicVersions]);
 
-  const [isActive,           setIsActive]           = useState(false);
-  const [sessionStarted,     setSessionStarted]     = useState(false);
+  // States
+  const [isActive,           setIsActive]           = useState(true); // Active immediately!
   const [currentTopicIndex,  setCurrentTopicIndex]  = useState(0);
   const [currentTier,        setCurrentTier]        = useState('tier3'); // Start at Standard
   const [elapsedSeconds,     setElapsedSeconds]     = useState(0);
@@ -151,6 +193,15 @@ export default function LearningInterface() {
   const [contentFading,      setContentFading]      = useState(false);
   const [loadHistory,        setLoadHistory]        = useState([]);
   const [distractionFree,    setDistractionFree]    = useState(false);
+  const [activeOverrideText, setActiveOverrideText] = useState(null);
+  const [contentSource,      setContentSource]      = useState(null);
+  const [topicAssessments,   setTopicAssessments]   = useState({});
+  const [isSynthesizing,     setIsSynthesizing]     = useState(false);
+  const [dynamicContent,     setDynamicContent]     = useState(null);
+  const [dynamicImageUrl,    setDynamicImageUrl]    = useState(null);
+  const [selectedAngle,      setSelectedAngle]      = useState('default');
+  const [reGenTrigger,       setReGenTrigger]       = useState(0);
+  const contentCacheRef                             = useRef({});
 
   const contentTopRef = useRef(null);
   const elapsedRef    = useRef(0);
@@ -158,9 +209,31 @@ export default function LearningInterface() {
   const { signals, cogLoad, setCogLoad, suggestion, setSuggestion, dismissSuggestion } = useSignalMonitor(isActive, currentTier);
 
   const currentTierMeta = TIER_META[currentTier];
-  const currentTopic    = topicNames[currentTopicIndex] || 'Introduction';
+  const currentTopic    = topicNames[currentTopicIndex] || topicNames[0] || 'Core Principles';
 
-  // ── Timer ──
+  const loadingDescription = useMemo(() => {
+    const t = (currentTopic || '').toLowerCase();
+    if (t.includes('phonics') || t.includes('alphabet') || t.includes('number') || t.includes('lkg') || t.includes('ukg') || t.includes('rhyme') || t.includes('letter')) {
+      return `Synthesizing playful phonics adventures, sound friends, and discovery maps for ${currentTopic}.`;
+    }
+    if (t.includes('plant') || t.includes('solar') || t.includes('water') || t.includes('nature') || t.includes('earth') || t.includes('science')) {
+      return `Exploring natural world wonders, illustrated science cycles, and core insights for ${currentTopic}.`;
+    }
+    if (t.includes('newton') || t.includes('physics') || t.includes('motion') || t.includes('gravity') || t.includes('chemistry')) {
+      return `Synthesizing empirical scientific laws, dynamic free-body schematics, and models for ${currentTopic}.`;
+    }
+    return `Building architectural blueprints, code patterns, and invariant analysis tailored to ${currentTopic}.`;
+  }, [currentTopic]);
+
+  // Track completion of topic mastery assessment
+  const handleAssessmentComplete = useCallback((assessmentData) => {
+    setTopicAssessments(prev => ({
+      ...prev,
+      [assessmentData.topic]: assessmentData
+    }));
+  }, []);
+
+  // Timer
   useEffect(() => {
     if (!isActive) return;
     const t = setInterval(() => {
@@ -169,19 +242,92 @@ export default function LearningInterface() {
     return () => clearInterval(t);
   }, [isActive]);
 
-  // ── Track load history for results chart ──
+  // Track load history for results chart
   useEffect(() => {
     if (!isActive) return;
     setLoadHistory(prev => [...prev.slice(-120), { t: elapsedRef.current, load: cogLoad }]);
   }, [cogLoad, isActive]);
 
-  // ── Change tier with a smooth fade + log the event ──
+  // Reset override text on topic navigation
+  useEffect(() => {
+    setActiveOverrideText(null);
+    setContentSource(null);
+  }, [currentTopicIndex]);
+
+  // Instantaneous curriculum presentation + background dynamic refinement
+  useEffect(() => {
+    let isCancelled = false;
+    const cacheKey = `${currentTopic}:${currentTier}:${selectedAngle}:${reGenTrigger}`;
+    const fallbackImageUrl = getEducationalImageUrl(currentTopic);
+
+    // 1. Instant Cache hit (0ms)
+    if (contentCacheRef.current[cacheKey]) {
+      setDynamicContent(contentCacheRef.current[cacheKey].content);
+      setContentSource(contentCacheRef.current[cacheKey].source);
+      if (contentCacheRef.current[cacheKey].imageUrl) {
+        setDynamicImageUrl(contentCacheRef.current[cacheKey].imageUrl);
+      }
+      setIsSynthesizing(false);
+      return;
+    }
+
+    // 2. Uploaded syllabus version (0ms)
+    if (topicVersions[currentTopic]?.[currentTier]) {
+      setDynamicContent(topicVersions[currentTopic][currentTier]);
+      setContentSource('uploaded_syllabus');
+      setIsSynthesizing(false);
+      return;
+    }
+
+    // 3. Immediately show verified curriculum lesson (0ms delay! NEVER block user with a spinner)
+    const baseContent = getContent(currentTopic, currentTier);
+    setDynamicContent(baseContent);
+    setContentSource('adaptive_core_curriculum');
+    setDynamicImageUrl(fallbackImageUrl);
+
+    // 4. Background asynchronous refinement
+    setIsSynthesizing(true);
+    async function backgroundRefine() {
+      try {
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject('timeout'), 1800));
+        const fetchPromise = generateDynamicContent({
+          subject,
+          topic: currentTopic,
+          tier: currentTier,
+          cognitive_state: cogLoad < 35 ? 2 : cogLoad > 70 ? 1 : 0,
+          angle: selectedAngle,
+        });
+
+        const data = await Promise.race([fetchPromise, timeoutPromise]);
+        if (!isCancelled && data && data.content) {
+          contentCacheRef.current[cacheKey] = {
+            content: data.content,
+            source: data.content_source || 'qwen_dynamic',
+            imageUrl: data.image_url || fallbackImageUrl,
+          };
+          setDynamicContent(data.content);
+          setContentSource(data.content_source || 'qwen_dynamic');
+          if (data.image_url) setDynamicImageUrl(data.image_url);
+        }
+      } catch (err) {
+        // Quietly maintain verified base content
+      } finally {
+        if (!isCancelled) setIsSynthesizing(false);
+      }
+    }
+
+    backgroundRefine();
+    return () => { isCancelled = true; };
+  }, [currentTopic, currentTier, selectedAngle, reGenTrigger, topicVersions, subject]);
+
+  // Change tier with a smooth fade + real-time adaptation
   const changeTier = useCallback((newTier, reason = 'manual') => {
     if (newTier === currentTier) return;
     setContentFading(true);
     setTimeout(() => {
       const prevTier = currentTier;
       setCurrentTier(newTier);
+      setActiveOverrideText(null);
       setAdaptationLog(prev => [...prev, {
         time: elapsedRef.current,
         from: prevTier,
@@ -192,10 +338,10 @@ export default function LearningInterface() {
         reason,
       }]);
       setContentFading(false);
-    }, 280);
+    }, 240);
   }, [currentTier, currentTopic]);
 
-  // ── Manual difficulty controls ──
+  // Manual difficulty controls
   const goSimpler = useCallback(() => {
     const idx = TIERS.indexOf(currentTier);
     if (idx > 0) changeTier(TIERS[idx - 1], 'manual-simpler');
@@ -206,7 +352,7 @@ export default function LearningInterface() {
     if (idx < TIERS.length - 1) changeTier(TIERS[idx + 1], 'manual-harder');
   }, [currentTier, changeTier]);
 
-  // ── Accept AI suggestion ──
+  // Accept AI suggestion
   const acceptSuggestion = useCallback(() => {
     const idx = TIERS.indexOf(currentTier);
     if (suggestion === 'simpler' && idx > 0) changeTier(TIERS[idx - 1], 'ai-suggested');
@@ -214,11 +360,9 @@ export default function LearningInterface() {
     dismissSuggestion();
   }, [currentTier, suggestion, changeTier, dismissSuggestion]);
 
-  // ── Hotkeys: 1/2/3 for tiers, Enter/Esc for suggestion ──
+  // Hotkeys: 1/2/3 for tiers, Enter/Esc for suggestion
   useEffect(() => {
-    if (!isActive) return;
     const handleKeyDown = (e) => {
-      // Ignore if typing inside input / textarea
       if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
 
       if (suggestion) {
@@ -241,18 +385,20 @@ export default function LearningInterface() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isActive, suggestion, acceptSuggestion, dismissSuggestion, changeTier]);
+  }, [suggestion, acceptSuggestion, dismissSuggestion, changeTier]);
 
   const { user } = useUser();
-
-  // ── Session start / end ──
-  const startSession = () => { setSessionStarted(true); setIsActive(true); };
 
   const endSession = () => {
     setIsActive(false);
     const avgLoad = loadHistory.length > 0
       ? Math.round(loadHistory.reduce((a, b) => a + b.load, 0) / loadHistory.length)
       : cogLoad;
+
+    const assessmentsList = Object.values(topicAssessments);
+    const avgQuizScore = assessmentsList.length > 0
+      ? Math.round(assessmentsList.reduce((acc, a) => acc + (a.totalScore || 75), 0) / assessmentsList.length)
+      : null;
 
     saveSession({
       user_id: user?.id || 'usr_default',
@@ -262,23 +408,29 @@ export default function LearningInterface() {
       initial_tier: 'tier3',
       final_tier: currentTier,
       topics: topicNames,
-      adaptation_log: adaptationLog
+      adaptation_log: adaptationLog,
+      assessment_results: assessmentsList,
+      quiz_score: avgQuizScore || 0,
     }).catch(err => console.warn('Could not auto-save session:', err));
 
-    navigate('/results', {
-      state: {
-        subject,
-        subjectId: location.state?.subjectId,
-        topicNames,
-        adaptationLog,
-        totalSeconds: elapsedRef.current,
-        avgLoad,
-        finalTier: currentTier,
-      },
-    });
+    const resultsPayload = {
+      subject,
+      subjectId: location.state?.subjectId,
+      topicNames,
+      adaptationLog,
+      totalSeconds: elapsedRef.current,
+      avgLoad,
+      finalTier: currentTier,
+      topicAssessments,
+      avgQuizScore,
+    };
+    try {
+      sessionStorage.setItem('cogflow_last_results', JSON.stringify(resultsPayload));
+    } catch {}
+
+    navigate('/results', { state: resultsPayload });
   };
 
-  // ── Switch topic ──
   const goToTopic = (idx) => {
     setCurrentTopicIndex(idx);
     setCurrentTier('tier3');
@@ -289,17 +441,12 @@ export default function LearningInterface() {
   const formatTime = (s) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
   const tierIdx = TIERS.indexOf(currentTier);
 
-  if (!subject) return null;
-  if (!sessionStarted) {
-    return <PreSessionScreen subject={subject} topicNames={topicNames} onStart={startSession} onBack={() => navigate('/topics')} />;
-  }
-
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', display: 'flex', flexDirection: 'column', position: 'relative' }}>
       <div className="glow-orb glow-orb-1" />
       <div className="glow-orb glow-orb-2" />
 
-      {/* Top Header */}
+      {/* Top Cyber Header */}
       <Navbar currentStep={4} session={{ time: formatTime(elapsedSeconds), state: cogLoad < 35 ? 'bored' : cogLoad > 70 ? 'overload' : 'flow' }} />
 
       {/* ── AI Suggestion Toast (Glassmorphic Slide-in) ── */}
@@ -308,7 +455,7 @@ export default function LearningInterface() {
           className="animate-fadeIn"
           style={{
             position: 'fixed', bottom: 32, right: 32, zIndex: 500,
-            background: 'rgba(12, 17, 29, 0.95)',
+            background: 'var(--bg-card)',
             border: `1px solid ${suggestion === 'simpler' ? 'rgba(244,63,94,0.45)' : 'rgba(245,158,11,0.45)'}`,
             borderRadius: 'var(--radius-xl)', padding: '20px 22px', maxWidth: 360,
             boxShadow: '0 16px 48px rgba(0,0,0,0.6), 0 0 30px rgba(99,102,241,0.15)',
@@ -331,8 +478,8 @@ export default function LearningInterface() {
 
           <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 16 }}>
             {suggestion === 'simpler'
-              ? 'Elevated cognitive load detected. Would you like to transition to key concept summaries and visual bullet points?'
-              : 'Consistent flow and high comprehension detected. Ready to step up to expert-depth analysis and technical synthesis?'
+              ? 'Elevated cognitive load detected. Transitioning to visual analogies and intuitive models?'
+              : 'High comprehension pace detected. Ready to step up to staff-level engineering and invariants?'
             }
           </p>
 
@@ -371,7 +518,7 @@ export default function LearningInterface() {
         </div>
       )}
 
-      {/* ── Main Layout ── */}
+      {/* ── Main Layout Canvas ── */}
       <div
         className="content-area"
         style={{
@@ -379,14 +526,14 @@ export default function LearningInterface() {
           display: 'grid',
           gridTemplateColumns: distractionFree ? '1fr' : 'minmax(0, 1fr) 350px',
           gap: 24,
-          maxWidth: distractionFree ? 960 : 1380,
+          maxWidth: distractionFree ? 980 : 1380,
           margin: '0 auto',
           width: '100%',
           padding: '24px 24px 48px',
           transition: 'all 0.3s ease',
         }}
       >
-        {/* ─── LEFT: Content area ─── */}
+        {/* ─── LEFT: Interactive Study Workspace ─── */}
         <div ref={contentTopRef} style={{ minWidth: 0 }}>
 
           {/* Breadcrumb + Mode Toggles */}
@@ -441,7 +588,7 @@ export default function LearningInterface() {
               {/* Distraction free toggle */}
               <button
                 onClick={() => setDistractionFree(!distractionFree)}
-                title={distractionFree ? 'Show telemetry sidebar' : 'Distraction-free mode'}
+                title={distractionFree ? 'Show telemetry sidebar' : 'Distraction-free focus mode'}
                 style={{
                   all: 'unset', cursor: 'pointer',
                   padding: '6px 10px', borderRadius: 8,
@@ -452,12 +599,12 @@ export default function LearningInterface() {
                 }}
               >
                 {distractionFree ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
-                <span className="hide-mobile">{distractionFree ? 'Normal' : 'Focus'}</span>
+                <span className="hide-mobile">{distractionFree ? 'Cockpit' : 'Focus'}</span>
               </button>
             </div>
           </div>
 
-          {/* Topic tabs */}
+          {/* Topic Navigation Tabs */}
           <div
             id="topic-tabs-row"
             style={{
@@ -495,7 +642,7 @@ export default function LearningInterface() {
             })}
           </div>
 
-          {/* Content card */}
+          {/* ── High-Craft Dynamic Content Card ── */}
           <div style={{
             background: 'var(--bg-card)', border: '1px solid var(--border)',
             borderRadius: 'var(--radius-xl)',
@@ -503,7 +650,94 @@ export default function LearningInterface() {
             position: 'relative',
             boxShadow: 'var(--shadow-card)',
           }}>
-            {/* Reading Content Pane */}
+            {/* Dynamic Perspective & Angle Selector Bar */}
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '10px 20px', background: 'rgba(255,255,255,0.02)',
+              borderBottom: '1px solid rgba(255,255,255,0.06)', flexWrap: 'wrap', gap: 10
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-muted)' }}>
+                <Sparkles size={13} style={{ color: '#818cf8' }} />
+                <span>Angle:</span>
+                {[
+                  { id: 'default', label: 'Balanced Core' },
+                  { id: 'visual_metaphor', label: '🎨 Visual Metaphor' },
+                  { id: 'production_failure', label: '💥 Incident Post-Mortem' },
+                  { id: 'code_deepdive', label: '💻 Code Implementation' }
+                ].map(a => (
+                  <button
+                    key={a.id}
+                    onClick={() => setSelectedAngle(a.id)}
+                    style={{
+                      all: 'unset', cursor: 'pointer',
+                      padding: '3px 9px', borderRadius: 6,
+                      fontSize: 11, fontWeight: selectedAngle === a.id ? 700 : 500,
+                      background: selectedAngle === a.id ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.03)',
+                      color: selectedAngle === a.id ? '#c7d2fe' : 'var(--text-muted)',
+                      border: `1px solid ${selectedAngle === a.id ? 'rgba(129,140,248,0.4)' : 'rgba(255,255,255,0.06)'}`,
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    {a.label}
+                  </button>
+                ))}
+
+                {isSynthesizing && (
+                  <div style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 5,
+                    fontSize: 11, fontWeight: 700, color: 'var(--theme-accent, #818cf8)',
+                    background: 'var(--theme-accent-bg, rgba(99,102,241,0.12))',
+                    border: '1px solid var(--theme-accent-border, rgba(129,140,248,0.3))',
+                    padding: '2px 8px', borderRadius: 6
+                  }}>
+                    <RefreshCw size={10} style={{ animation: 'spin 1.2s linear infinite' }} />
+                    <span>AI Refining...</span>
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <button
+                  onClick={() => {
+                    const filename = `${currentTopic.replace(/[^a-zA-Z0-9_-]/g, '_')}-StudyNotes.md`;
+                    const notesContent = `# ${currentTopic} — Study Guide\nTier: ${currentTierMeta.label} (${currentTierMeta.short})\nSubject: ${subject}\n\n---\n\n${dynamicContent || activeOverrideText || getContent(currentTopic, currentTier)}`;
+                    triggerFileDownload(filename, notesContent, 'text/markdown;charset=utf-8');
+                  }}
+                  title="Download complete study notes as Markdown"
+                  style={{
+                    all: 'unset', cursor: 'pointer',
+                    padding: '4px 10px', borderRadius: 6,
+                    fontSize: 11, fontWeight: 700,
+                    background: 'rgba(56,189,248,0.1)', color: '#38bdf8',
+                    border: '1px solid rgba(56,189,248,0.25)',
+                    display: 'inline-flex', alignItems: 'center', gap: 5,
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  <Download size={11} />
+                  Download Notes
+                </button>
+
+                <button
+                  onClick={() => setReGenTrigger(c => c + 1)}
+                  title="Re-synthesize this lesson with Qwen"
+                  style={{
+                    all: 'unset', cursor: 'pointer',
+                    padding: '4px 10px', borderRadius: 6,
+                    fontSize: 11, fontWeight: 700,
+                    background: 'rgba(99,102,241,0.1)', color: '#a5b4fc',
+                    border: '1px solid rgba(99,102,241,0.25)',
+                    display: 'inline-flex', alignItems: 'center', gap: 5,
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  <RefreshCw size={11} />
+                  Re-Synthesize
+                </button>
+              </div>
+            </div>
+
+            {/* Reading Content Pane (Instantly visible & interactive in 0ms) */}
             <div
               style={{
                 padding: '28px 32px 24px',
@@ -512,15 +746,22 @@ export default function LearningInterface() {
                 minHeight: 400,
               }}
             >
-              <ContentRenderer tier={currentTier} topic={currentTopic} />
+              <ContentRenderer
+                tier={currentTier}
+                topic={currentTopic}
+                customVersions={topicVersions[currentTopic]}
+                activeOverrideText={dynamicContent || activeOverrideText}
+                contentSource={contentSource}
+                imageUrl={dynamicImageUrl}
+              />
             </div>
 
-            {/* ── Dynamic Tier Control Bar at Bottom of Content ── */}
+            {/* Dynamic Tier Control Bar at Bottom of Content */}
             <div style={{
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               padding: '14px 24px',
               borderTop: '1px solid var(--border)',
-              background: 'rgba(16, 21, 36, 0.6)',
+              background: 'var(--bg-card)',
               backdropFilter: 'blur(10px)',
               gap: 14,
               flexWrap: 'wrap',
@@ -593,6 +834,15 @@ export default function LearningInterface() {
             </div>
           </div>
 
+          {/* ── Active Recall & Topic Mastery Assessment (MCQs + Qwen AI Typing Evaluation) ── */}
+          <TopicAssessment
+            topicName={currentTopic}
+            tier={currentTier}
+            cognitiveLoad={cogLoad}
+            onAssessmentComplete={handleAssessmentComplete}
+            initialResults={topicAssessments[currentTopic]}
+          />
+
           {/* Prev / Next navigation footer */}
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 18, gap: 12, flexWrap: 'wrap' }}>
             <button
@@ -653,181 +903,42 @@ export default function LearningInterface() {
               />
             </div>
 
-            {/* Live Interaction Telemetry */}
-            <div style={{
-              flexShrink: 0, background: 'var(--bg-card)', border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-xl)', padding: '16px', boxShadow: 'var(--shadow-card)'
-            }}>
-              <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.08em', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Activity size={12} style={{ color: 'var(--indigo-light)' }} />
-                  Telemetry Signals
-                </span>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 9, color: '#34d399', fontWeight: 700 }}>
-                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#34d399', boxShadow: '0 0 6px #34d399' }} />
-                  Streaming
-                </span>
+            {/* Live Interaction Signals */}
+            <div className="card" style={{ padding: '16px 18px', borderRadius: 'var(--radius-lg)' }}>
+              <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.08em', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Activity size={12} color="var(--indigo-light)" />
+                Telemetry Fusion
               </div>
 
-              {[
-                { label: 'Mouse Dynamics', value: Math.round(signals.mouseVelocity), icon: <MousePointer size={12} color="var(--indigo-light)" /> },
-                { label: 'Reading Velocity', value: Math.round(signals.scrollRate), icon: <Scroll size={12} color="var(--violet-light)" /> },
-                { label: 'Input Cadence', value: Math.round(signals.typingPace), icon: <Keyboard size={12} color="var(--emerald)" /> },
-              ].map(({ label, value, icon }) => (
-                <div key={label} style={{ marginBottom: 10 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 4 }}>
-                    <span style={{ color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                      {icon} {label}
-                    </span>
-                    <span style={{ color: 'var(--text-primary)', fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>{value}%</span>
-                  </div>
-                  <div className="progress-bar-container" style={{ height: 4, background: 'rgba(255,255,255,0.05)', borderRadius: 99, overflow: 'hidden' }}>
-                    <div className="progress-bar-fill" style={{ width: `${value}%`, background: 'var(--gradient-brand)', height: '100%', borderRadius: 99, transition: 'width 0.6s ease' }} />
-                  </div>
-                </div>
-              ))}
-
-              <div style={{ marginTop: 10, fontSize: 10, color: 'var(--text-muted)', lineHeight: 1.5, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', gap: 5 }}>
-                <ShieldCheck size={12} style={{ color: 'var(--indigo-light)', flexShrink: 0 }} />
-                <span>Minimum 45s baseline required before suggestions</span>
-              </div>
-            </div>
-
-            {/* Session Stats */}
-            <div style={{
-              flexShrink: 0, background: 'var(--bg-card)', border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-xl)', padding: '16px', boxShadow: 'var(--shadow-card)'
-            }}>
-              <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.08em', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 12 }}>
-                Cockpit Telemetry
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                {[
-                  { label: 'Time Elapsed', value: formatTime(elapsedSeconds) },
-                  { label: 'Adaptations',  value: adaptationLog.length },
-                  { label: 'Topic Queue',  value: `${currentTopicIndex + 1}/${topicNames.length}` },
-                  { label: 'Active Depth', value: currentTierMeta.short },
-                ].map(({ label, value }) => (
-                  <div key={label} style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px', textAlign: 'center' }}>
-                    <div style={{ fontSize: 15, fontWeight: 800, fontFamily: 'Space Grotesk', color: 'var(--text-primary)' }}>{value}</div>
-                    <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>{label}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Timeline */}
-            <div style={{ flexShrink: 0 }}>
-              <SessionTimeline adaptationLog={adaptationLog} totalSeconds={elapsedSeconds} />
-            </div>
-
-            {/* End session button */}
-            <button
-              className="btn btn-secondary btn-sm" id="sidebar-end-btn" onClick={endSession}
-              style={{ width: '100%', justifyContent: 'center', color: '#fda4af', borderColor: 'rgba(244,63,94,0.3)', flexShrink: 0 }}
-            >
-              End Session & Review
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ── Pre-session Screen ──
-function PreSessionScreen({ subject, topicNames, onStart, onBack }) {
-  return (
-    <div className="page" style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <div className="glow-orb glow-orb-1" />
-      <div className="glow-orb glow-orb-2" />
-      <Navbar currentStep={4} />
-
-      <div className="content-area" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '32px 24px' }}>
-        <div style={{ maxWidth: 540, width: '100%' }}>
-          <div className="animate-fadeInUp" style={{
-            background: 'var(--gradient-card)', border: '1px solid var(--border)',
-            borderRadius: 'var(--radius-xl)', padding: '40px 36px',
-            boxShadow: 'var(--shadow-glow)', position: 'relative', overflow: 'hidden'
-          }}>
-            {/* Top ambient badge */}
-            <div style={{
-              width: 64, height: 64, borderRadius: 20,
-              background: 'linear-gradient(135deg, rgba(99,102,241,0.2), rgba(168,85,247,0.2))',
-              border: '1px solid rgba(129,140,248,0.4)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              margin: '0 auto 20px',
-              boxShadow: '0 0 24px rgba(99,102,241,0.3)',
-            }}>
-              <Brain size={30} style={{ color: '#c7d2fe' }} />
-            </div>
-
-            <div style={{ textAlign: 'center', marginBottom: 20 }}>
-              <h1 style={{ fontSize: 24, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 8, letterSpacing: '-0.02em' }}>
-                Initialize Study Cockpit
-              </h1>
-              <p style={{ color: 'var(--text-secondary)', fontSize: 13.5, lineHeight: 1.6, maxWidth: 440, margin: '0 auto' }}>
-                CogFlow continuously monitors reading telemetry and facial cues to maintain optimal flow state. Adaptations remain purely under your command.
-              </p>
-            </div>
-
-            {/* How adaptation works card */}
-            <div style={{
-              background: 'rgba(99,102,241,0.04)', borderRadius: 12, padding: '16px 18px',
-              marginBottom: 20, border: '1px solid rgba(99,102,241,0.12)',
-            }}>
-              <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--indigo-light)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>
-                Intelligent Feedback Loop
-              </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {[
-                  { icon: <Activity size={14} color="var(--indigo-light)" />, title: 'Real-time Signal Analysis', desc: 'Monitors reading cadence and facial tension non-intrusively.' },
-                  { icon: <Sparkles size={14} color="var(--emerald)" />, title: 'Cognitive Suggestions', desc: 'Prompts tier adjustments after 30-45 seconds of sustained load.' },
-                  { icon: <ShieldCheck size={14} color="var(--amber)" />, title: 'Complete User Autonomy', desc: 'Accept suggestions or manually change depth anytime (keys 1-3).' },
-                ].map(({ icon, title, desc }) => (
-                  <div key={title} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                    <div style={{ padding: 4, borderRadius: 6, background: 'rgba(255,255,255,0.04)', marginTop: 2 }}>{icon}</div>
-                    <div>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>{title}</div>
-                      <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>{desc}</div>
+                  { label: 'Pointer Velocity', val: `${signals.mouseVelocity} px/s`, icon: <MousePointer size={11} />, pct: signals.mouseVelocity },
+                  { label: 'Reading Cadence',  val: `${signals.scrollRate}%`,       icon: <Scroll size={11} />,       pct: signals.scrollRate },
+                  { label: 'Keystroke Rhythm', val: `${signals.typingPace}%`,       icon: <Keyboard size={11} />,     pct: signals.typingPace },
+                ].map(({ label, val, icon, pct }) => (
+                  <div key={label}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 4, color: 'var(--text-secondary)' }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>{icon}{label}</span>
+                      <span style={{ fontWeight: 700, color: 'var(--text-primary)', fontFamily: "'JetBrains Mono', monospace" }}>{val}</span>
+                    </div>
+                    <div style={{ height: 4, background: 'rgba(255,255,255,0.05)', borderRadius: 99, overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${pct}%`, background: 'var(--gradient-brand)', borderRadius: 99, transition: 'width 0.4s ease' }} />
                     </div>
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* Topic queue */}
-            <div style={{ background: 'rgba(255,255,255,0.02)', borderRadius: 12, padding: '16px', marginBottom: 24, border: '1px solid var(--border)' }}>
-              <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.08em', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 10, display: 'flex', justifyContent: 'space-between' }}>
-                <span>Curriculum Queue</span>
-                <span style={{ color: 'var(--indigo-light)' }}>{topicNames.length} Topics</span>
+            {/* Timeline of adaptations */}
+            <div className="card" style={{ padding: '16px 18px', borderRadius: 'var(--radius-lg)' }}>
+              <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.08em', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 12 }}>
+                Cognitive State History
               </div>
-              <div style={{ maxHeight: 120, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {topicNames.map((t, i) => (
-                  <div key={i} style={{
-                    display: 'flex', alignItems: 'center', gap: 10, padding: '6px 8px',
-                    borderRadius: 6, background: 'rgba(255,255,255,0.02)',
-                  }}>
-                    <span style={{ width: 18, height: 18, borderRadius: '50%', background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 800, color: 'var(--indigo-light)', flexShrink: 0 }}>
-                      {i + 1}
-                    </span>
-                    <span style={{ fontSize: 12, color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t}</span>
-                  </div>
-                ))}
-              </div>
+              <SessionTimeline log={adaptationLog} totalSeconds={elapsedSeconds} />
             </div>
 
-            <div style={{ display: 'flex', gap: 12 }}>
-              <button className="btn btn-secondary" id="back-from-prescreen" onClick={onBack} style={{ flex: 1, justifyContent: 'center' }}>
-                Back
-              </button>
-              <button className="btn btn-primary" id="start-session-btn" onClick={onStart} style={{ flex: 2, justifyContent: 'center', gap: 8 }}>
-                Initialize Session
-                <ArrowRight size={15} />
-              </button>
-            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

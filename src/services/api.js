@@ -107,3 +107,51 @@ export async function getUserAnalytics(userId = 'usr_default') {
     };
   }
 }
+
+
+// ── On-The-Fly Dynamic Qwen AI Content & Quiz Services ──
+
+export async function generateDynamicContent({ subject = 'Computer Science', topic, subtopic = null, tier = 'tier3', cognitive_state = 0, angle = 'default' }) {
+  try {
+    const res = await fetch(`${API_BASE}/api/generate-content`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subject, topic, subtopic, tier, cognitive_state, angle }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    console.warn('[API] generateDynamicContent error:', err);
+    return null;
+  }
+}
+
+export async function generateDynamicQuiz({ topic, subtopic = null, tier = 'tier3', cognitive_load = 50.0, content_snippet = null }) {
+  try {
+    const res = await fetch(`${API_BASE}/api/generate-quiz`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ topic, subtopic, tier, cognitive_load, content_snippet }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    console.warn('[API] generateDynamicQuiz error:', err);
+    return null;
+  }
+}
+
+export async function evaluateStudentAnswer({ topic, question, student_answer, tier = 'tier3' }) {
+  try {
+    const res = await fetch(`${API_BASE}/api/evaluate-answer`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ topic, question, student_answer, tier }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    console.warn('[API] evaluateStudentAnswer error:', err);
+    return null;
+  }
+}

@@ -1,7 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useUser } from '../context/UserContext';
-import { Brain, Cpu, User, ArrowRight, Volume2, VolumeX, Activity, Sparkles, BookOpen } from 'lucide-react';
+import { 
+  Brain, Cpu, User, ArrowRight, Volume2, VolumeX, Activity, 
+  Sparkles, BookOpen, Layers, Compass, Zap
+} from 'lucide-react';
+import ThemeSelector from './ThemeSelector';
 import { sounds } from '../utils/soundEffects';
 
 export default function Navbar({ currentStep = 0, session = null }) {
@@ -9,6 +13,36 @@ export default function Navbar({ currentStep = 0, session = null }) {
   const navigate = useNavigate();
   const { user } = useUser();
   const [muted, setMuted] = useState(sounds.isMuted());
+  const [activeTheme, setActiveTheme] = useState(() => {
+    try {
+      return localStorage.getItem('cogflow_mood_theme') || 'dark';
+    } catch {
+      return 'dark';
+    }
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', activeTheme);
+    document.documentElement.setAttribute('data-therapy-theme', activeTheme);
+    document.body.setAttribute('data-theme', activeTheme);
+    document.body.setAttribute('data-therapy-theme', activeTheme);
+    try {
+      localStorage.setItem('cogflow_mood_theme', activeTheme);
+    } catch {}
+    window.dispatchEvent(new CustomEvent('cogflow-theme-change', { detail: { theme: activeTheme } }));
+  }, [activeTheme]);
+
+  const handleSelectTheme = (themeId) => {
+    setActiveTheme(themeId);
+    document.documentElement.setAttribute('data-theme', themeId);
+    document.documentElement.setAttribute('data-therapy-theme', themeId);
+    document.body.setAttribute('data-theme', themeId);
+    document.body.setAttribute('data-therapy-theme', themeId);
+    try {
+      localStorage.setItem('cogflow_mood_theme', themeId);
+    } catch {}
+    window.dispatchEvent(new CustomEvent('cogflow-theme-change', { detail: { theme: themeId } }));
+  };
 
   const handleToggleSound = () => {
     const isNowMuted = sounds.toggleMute();
@@ -19,76 +53,67 @@ export default function Navbar({ currentStep = 0, session = null }) {
     sounds.playClick();
   };
 
-  // User initials for monogram badge
   const initials = user?.name
     ? user.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
-    : 'PG';
+    : 'CF';
+
+  const isActive = (path) => location.pathname === path;
 
   return (
     <header style={{
       position: 'sticky', top: 0, zIndex: 100,
-      background: 'rgba(7, 9, 14, 0.82)',
-      backdropFilter: 'blur(24px)',
-      WebkitBackdropFilter: 'blur(24px)',
+      background: 'var(--bg-secondary)',
+      backdropFilter: 'blur(20px)',
+      WebkitBackdropFilter: 'blur(20px)',
       borderBottom: '1px solid var(--border)',
+      boxShadow: '0 4px 20px rgba(0, 0, 0, 0.4)',
+      transition: 'background-color 0.35s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.35s ease'
     }}>
       <div style={{
-        maxWidth: 1360, margin: '0 auto', padding: '0 24px', height: 64,
+        maxWidth: 1360, margin: '0 auto', padding: '0 20px', height: 58,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16
       }}>
-        {/* Left: Brand Identity */}
+        {/* Left: Refined Minimal Brand */}
         <Link
           to="/"
           onClick={navItemClick}
           style={{
             textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 10,
-            transition: 'opacity 0.2s ease',
+            transition: 'opacity 0.2s ease', flexShrink: 0
           }}
-          onMouseEnter={e => e.currentTarget.style.opacity = '0.9'}
+          onMouseEnter={e => e.currentTarget.style.opacity = '0.88'}
           onMouseLeave={e => e.currentTarget.style.opacity = '1'}
         >
-          {/* Custom SVG Neural Frequency Icon */}
           <div style={{
-            width: 34, height: 34, borderRadius: 10,
-            background: 'linear-gradient(135deg, rgba(99,102,241,0.25), rgba(168,85,247,0.25))',
-            border: '1px solid rgba(129,140,248,0.4)',
+            width: 32, height: 32, borderRadius: 9,
+            background: 'var(--theme-accent-bg)',
+            border: '1px solid var(--theme-accent-border)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 0 16px rgba(99,102,241,0.3)',
+            boxShadow: '0 0 12px var(--theme-accent-bg)',
+            flexShrink: 0,
+            transition: 'all 0.35s ease'
           }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-              <path d="M2 12h3l2.5-6 3.5 12 3-8 2 5 2-3h4" stroke="url(#nav-glyph-grad)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
-              <defs>
-                <linearGradient id="nav-glyph-grad" x1="2" y1="6" x2="22" y2="18" gradientUnits="userSpaceOnUse">
-                  <stop stopColor="#818cf8"/>
-                  <stop offset="1" stopColor="#c084fc"/>
-                </linearGradient>
-              </defs>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path d="M2 12h3l2.5-6 3.5 12 3-8 2 5 2-3h4" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--theme-accent, #818cf8)' }} />
             </svg>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-            <span style={{
-              fontSize: 18, fontWeight: 900, fontFamily: 'Space Grotesk, -apple-system, sans-serif',
-              letterSpacing: '-0.03em', color: '#fff',
-            }}>
-              CogFlow
-            </span>
-            <span style={{
-              fontSize: 9, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase',
-              color: 'var(--indigo-light)', background: 'rgba(99,102,241,0.12)',
-              border: '1px solid rgba(99,102,241,0.25)', padding: '2px 6px', borderRadius: 6
-            }}>
-              v2.4 Neural
-            </span>
-          </div>
+          <span style={{
+            fontSize: 18, fontWeight: 900, fontFamily: 'Space Grotesk, -apple-system, sans-serif',
+            letterSpacing: '-0.03em', color: 'var(--text-primary)', whiteSpace: 'nowrap'
+          }}>
+            CogFlow
+          </span>
         </Link>
 
-        {/* Center: Live Session HUD or System Status */}
+        {/* Center: Sleek Single-Line Navigation or Live Session HUD */}
         {session ? (
           <div style={{
-            display: 'flex', alignItems: 'center', gap: 14,
-            background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)',
+            display: 'flex', alignItems: 'center', gap: 12,
+            background: 'var(--bg-glass)', border: '1px solid var(--border-hover)',
             borderRadius: 99, padding: '4px 14px',
+            boxShadow: '0 0 20px rgba(0,0,0,0.5)',
+            transition: 'all 0.35s ease'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{
@@ -101,78 +126,136 @@ export default function Navbar({ currentStep = 0, session = null }) {
               </span>
             </div>
             <span style={{ width: 1, height: 12, background: 'var(--border)' }} />
-            <span style={{ fontSize: 12, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: 'var(--indigo-light)' }}>
+            <span style={{ fontSize: 12, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: 'var(--theme-accent, #818cf8)' }}>
               {session.time}
             </span>
           </div>
         ) : (
-          <div className="hide-mobile" style={{
-            display: 'flex', alignItems: 'center', gap: 14,
-            fontSize: 11, color: 'var(--text-muted)', fontWeight: 600
+          <nav className="hide-mobile" style={{
+            display: 'flex', alignItems: 'center', gap: 3,
+            background: 'var(--bg-glass)', border: '1px solid var(--border)',
+            padding: '3px 5px', borderRadius: 99,
+            transition: 'all 0.35s ease'
           }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#34d399', boxShadow: '0 0 8px #34d399' }} />
-              DAiSEE Engine Active
-            </span>
-            <span style={{ color: 'var(--border)' }}>·</span>
-            <span style={{ fontFamily: "'JetBrains Mono', monospace", color: 'var(--text-secondary)' }}>
-              24ms Latency · 60 FPS
-            </span>
-          </div>
+            <Link
+              to="/"
+              onClick={navItemClick}
+              style={{
+                textDecoration: 'none', fontSize: 12.5, fontWeight: 600,
+                color: isActive('/') ? '#ffffff' : 'var(--text-secondary)',
+                background: isActive('/') ? 'var(--theme-accent-bg)' : 'transparent',
+                border: isActive('/') ? '1px solid var(--theme-accent-border)' : '1px solid transparent',
+                padding: '5px 14px', borderRadius: 99,
+                transition: 'all 0.2s ease',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              Overview
+            </Link>
+
+            <Link
+              to="/subjects"
+              onClick={navItemClick}
+              style={{
+                textDecoration: 'none', fontSize: 12.5, fontWeight: 600,
+                color: isActive('/subjects') || isActive('/choose-path') ? '#ffffff' : 'var(--text-secondary)',
+                background: isActive('/subjects') || isActive('/choose-path') ? 'var(--theme-accent-bg)' : 'transparent',
+                border: isActive('/subjects') || isActive('/choose-path') ? '1px solid var(--theme-accent-border)' : '1px solid transparent',
+                padding: '5px 14px', borderRadius: 99,
+                transition: 'all 0.2s ease',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              Curriculum
+            </Link>
+
+            <Link
+              to="/learn"
+              onClick={navItemClick}
+              style={{
+                textDecoration: 'none', fontSize: 12.5, fontWeight: 600,
+                color: isActive('/learn') ? '#ffffff' : 'var(--text-secondary)',
+                background: isActive('/learn') ? 'var(--theme-accent-bg)' : 'transparent',
+                border: isActive('/learn') ? '1px solid var(--theme-accent-border)' : '1px solid transparent',
+                padding: '5px 14px', borderRadius: 99,
+                transition: 'all 0.2s ease',
+                display: 'flex', alignItems: 'center', gap: 5,
+                whiteSpace: 'nowrap'
+              }}
+            >
+              <Zap size={12} style={{ color: 'var(--theme-accent, #818cf8)' }} />
+              Adaptive Cockpit
+            </Link>
+          </nav>
         )}
 
-        {/* Right: Sound Toggle, Navigation Links & Profile Avatar */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          {/* Sound Synthesizer Toggle */}
+        {/* Right: Consolidated Controls (Theme + Status + Sound + Profile) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+
+          {/* Theme Dropdown */}
+          <ThemeSelector currentTheme={activeTheme} onChange={handleSelectTheme} />
+
+          {/* Qwen AI Micro Status Pill */}
+          <div className="hide-mobile" style={{
+            display: 'flex', alignItems: 'center', gap: 5,
+            background: 'rgba(16, 185, 129, 0.08)',
+            border: '1px solid rgba(52, 211, 153, 0.22)',
+            padding: '4px 9px', borderRadius: 99,
+            fontSize: 11, fontWeight: 700, color: '#34d399',
+            whiteSpace: 'nowrap'
+          }}>
+            <span style={{
+              width: 5, height: 5, borderRadius: '50%', background: '#34d399',
+              boxShadow: '0 0 6px #34d399', animation: 'pulseGlow 2s infinite ease-in-out'
+            }} />
+            Qwen 2.5
+          </div>
+
+          {/* Sound Toggle Button */}
           <button
             onClick={handleToggleSound}
             title={muted ? 'Enable UI Audio Feedback' : 'Mute UI Audio'}
             style={{
-              all: 'unset', cursor: 'pointer', padding: '6px 8px', borderRadius: 8,
-              background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)',
-              color: muted ? 'var(--text-muted)' : 'var(--indigo-light)',
+              all: 'unset', cursor: 'pointer', width: 30, height: 30, borderRadius: 8,
+              background: 'var(--bg-glass)', border: '1px solid var(--border)',
+              color: muted ? 'var(--text-muted)' : 'var(--theme-accent, #818cf8)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              transition: 'var(--transition)'
+              transition: 'all 0.2s ease'
             }}
           >
-            {muted ? <VolumeX size={15} /> : <Volume2 size={15} />}
+            {muted ? <VolumeX size={14} /> : <Volume2 size={14} />}
           </button>
 
-          <Link
-            to="/choose-path"
-            onClick={navItemClick}
-            className="hide-mobile"
-            style={{
-              textDecoration: 'none', fontSize: 12.5, fontWeight: 600,
-              color: location.pathname === '/choose-path' ? 'var(--indigo-light)' : 'var(--text-secondary)',
-              padding: '6px 12px', borderRadius: 8,
-              transition: 'all 0.2s ease',
-            }}
-          >
-            Explore Paths
-          </Link>
-
-          {/* Profile Monogram Button */}
+          {/* Compact User Profile Button */}
           <Link
             to="/profile"
             onClick={navItemClick}
+            title="Learner Profile"
             style={{
-              textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 8,
-              background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)',
-              padding: '4px 10px 4px 6px', borderRadius: 20,
+              textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 7,
+              background: 'var(--bg-glass)', border: '1px solid var(--border)',
+              padding: '3px 9px 3px 4px', borderRadius: 20,
               transition: 'all 0.2s ease',
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.borderColor = 'var(--theme-accent-border)';
+              e.currentTarget.style.background = 'var(--bg-card-hover)';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.borderColor = 'var(--border)';
+              e.currentTarget.style.background = 'var(--bg-glass)';
             }}
           >
             <div style={{
-              width: 26, height: 26, borderRadius: '50%',
-              background: 'linear-gradient(135deg, rgba(99,102,241,0.3), rgba(168,85,247,0.3))',
-              border: '1px solid rgba(129,140,248,0.5)',
+              width: 24, height: 24, borderRadius: '50%',
+              background: 'var(--gradient-brand)',
+              border: '1px solid var(--theme-accent-border)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 10, fontWeight: 900, color: '#c7d2fe', fontFamily: 'Space Grotesk, sans-serif'
+              fontSize: 10, fontWeight: 900, color: '#ffffff', fontFamily: 'Space Grotesk, sans-serif'
             }}>
               {initials}
             </div>
-            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
               {user?.name?.split(' ')[0] || 'Learner'}
             </span>
           </Link>

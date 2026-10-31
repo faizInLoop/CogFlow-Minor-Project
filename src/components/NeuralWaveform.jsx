@@ -205,7 +205,7 @@ export default function NeuralWaveform({ defaultBand = 'alpha' }) {
       <div style={{
         position: 'relative',
         height: 140,
-        background: '#06080e',
+        background: 'var(--bg-secondary)',
         borderRadius: 12,
         border: '1px solid rgba(255,255,255,0.06)',
         overflow: 'hidden',

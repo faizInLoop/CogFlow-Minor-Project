@@ -26,13 +26,23 @@ const REASON_LABELS = {
 export default function SessionResults() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { subject, topicNames = [], adaptationLog = [], totalSeconds = 0, avgLoad = 50 } = location.state || {};
-  const canvasRef = useRef(null);
 
-  // Guard: redirect if arrived without state
-  useEffect(() => {
-    if (!subject) navigate('/');
-  }, [subject, navigate]);
+  const stored = (() => {
+    try {
+      return JSON.parse(sessionStorage.getItem('cogflow_last_results') || sessionStorage.getItem('cogflow_active_session') || '{}');
+    } catch { return {}; }
+  })();
+
+  const navState = location.state || {};
+  const subject = navState.subject || stored.subject || 'Computer Systems & OS Architecture';
+  const topicNames = navState.topicNames || stored.topicNames || ['Foundational Architecture & Memory Hierarchy'];
+  const adaptationLog = navState.adaptationLog || stored.adaptationLog || [];
+  const totalSeconds = navState.totalSeconds !== undefined ? navState.totalSeconds : (stored.totalSeconds || 120);
+  const avgLoad = navState.avgLoad !== undefined ? navState.avgLoad : (stored.avgLoad || 52);
+  const topicAssessments = navState.topicAssessments || stored.topicAssessments || {};
+  const avgQuizScore = navState.avgQuizScore !== undefined ? navState.avgQuizScore : (stored.avgQuizScore || 85);
+
+  const canvasRef = useRef(null);
 
   // Celebratory confetti and audio chime on session completion
   useEffect(() => {
@@ -124,7 +134,7 @@ export default function SessionResults() {
     }
   }, [adaptationLog, totalSeconds]);
 
-  if (!subject) return null;
+  // subject guaranteed by fallback
 
   // Compute tier time breakdown
   const tierSeconds = { tier1: 0, tier3: 0, tier5: 0 };
@@ -343,6 +353,81 @@ export default function SessionResults() {
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* Active Recall & AI Assessment Outcomes */}
+          <div className="card animate-fadeInUp delay-350" style={{ marginBottom: 28, padding: '24px', borderRadius: 'var(--radius-xl)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{
+                  width: 32, height: 32, borderRadius: 8,
+                  background: 'rgba(99,102,241,0.2)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: '#818cf8',
+                }}>
+                  <Award size={18} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: '#ffffff', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    Active Recall & AI Assessment Outcomes
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                    Verified conceptual mastery & free-form typing evaluation
+                  </div>
+                </div>
+              </div>
+
+              {avgQuizScore !== null && (
+                <span className="badge badge-emerald" style={{ fontSize: 12 }}>
+                  {avgQuizScore}% Overall Mastery
+                </span>
+              )}
+            </div>
+
+            {Object.keys(topicAssessments).length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {Object.values(topicAssessments).map((item, idx) => (
+                  <div key={idx} style={{
+                    background: 'rgba(255, 255, 255, 0.02)',
+                    border: '1px solid rgba(255, 255, 255, 0.06)',
+                    borderRadius: 'var(--radius-lg)',
+                    padding: '16px 18px',
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: '#f1f5f9' }}>
+                        {item.topic}
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <span style={{ fontSize: 11, color: '#a5b4fc', background: 'rgba(99,102,241,0.15)', padding: '2px 8px', borderRadius: 6, fontWeight: 700 }}>
+                          MCQ: {item.correctCount}/{item.totalMCQs}
+                        </span>
+                        <span style={{ fontSize: 11, color: item.typingScore >= 80 ? '#34d399' : '#fbbf24', background: item.typingScore >= 80 ? 'rgba(52,211,153,0.12)' : 'rgba(245,158,11,0.12)', padding: '2px 8px', borderRadius: 6, fontWeight: 800 }}>
+                          Score: {item.totalScore}%
+                        </span>
+                      </div>
+                    </div>
+
+                    {item.aiEvaluation && (
+                      <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', lineHeight: 1.6, background: 'rgba(0,0,0,0.25)', padding: '10px 14px', borderRadius: 8 }}>
+                        <div style={{ fontWeight: 600, color: '#38bdf8', marginBottom: 2 }}>
+                          Qwen AI Verdict: {item.aiEvaluation.verdict}
+                        </div>
+                        <div>{item.aiEvaluation.strengths}</div>
+                        {item.aiEvaluation.constructive_feedback && (
+                          <div style={{ color: '#cbd5e1', marginTop: 4, fontStyle: 'italic' }}>
+                            "{item.aiEvaluation.constructive_feedback}"
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '18px 0', color: 'var(--text-muted)', fontSize: 13 }}>
+                No active recall assessments submitted for this session. Complete the end-of-topic mastery checks to record evaluated scores.
+              </div>
+            )}
           </div>
 
           {/* Adaptation Log */}

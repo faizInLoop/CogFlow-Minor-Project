@@ -149,7 +149,7 @@ export default function UserProfile() {
               }}
             >
               {allUsers.map(u => (
-                <option key={u.id} value={u.id} style={{ background: '#0e1422', color: '#fff' }}>
+                <option key={u.id} value={u.id} style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>
                   {u.name} ({u.grade_level || 'Learner'})
                 </option>
               ))}
@@ -594,7 +594,7 @@ export default function UserProfile() {
           display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
         }}>
           <div style={{
-            background: '#0d121f', border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)',
+            background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)',
             padding: '28px', maxWidth: 440, width: '90%', boxShadow: 'var(--shadow-glow)'
           }}>
             <h2 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 16 }}>Edit Learner Profile</h2>
@@ -636,7 +636,7 @@ export default function UserProfile() {
           display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
         }}>
           <div style={{
-            background: '#0d121f', border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)',
+            background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)',
             padding: '28px', maxWidth: 440, width: '90%', boxShadow: 'var(--shadow-glow)'
           }}>
             <h2 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 16 }}>Create New Learner Profile</h2>

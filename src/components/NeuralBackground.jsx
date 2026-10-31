@@ -1,5 +1,51 @@
 import { useEffect, useRef } from 'react';
 
+// RGB color vectors for each mood theme
+const THEME_PARTICLE_COLORS = {
+  dark: {
+    particle: [129, 140, 248],
+    glow: [99, 102, 241],
+    synapse: [99, 102, 241],
+    pointer: [168, 85, 247]
+  },
+  calm: {
+    particle: [56, 189, 248],     // Ocean cyan
+    glow: [14, 165, 233],
+    synapse: [14, 165, 233],
+    pointer: [56, 189, 248]
+  },
+  nature: {
+    particle: [52, 211, 153],    // Emerald peaceful
+    glow: [16, 185, 129],
+    synapse: [16, 185, 129],
+    pointer: [110, 231, 183]
+  },
+  relaxing: {
+    particle: [192, 132, 252],   // Twilight dusk purple
+    glow: [168, 85, 247],
+    synapse: [168, 85, 247],
+    pointer: [216, 180, 254]
+  },
+  solar: {
+    particle: [251, 191, 36],    // Solar amber
+    glow: [245, 158, 11],
+    synapse: [245, 158, 11],
+    pointer: [253, 230, 138]
+  },
+  happy: {
+    particle: [251, 113, 133],   // Sprint vitality ruby
+    glow: [244, 63, 94],
+    synapse: [244, 63, 94],
+    pointer: [253, 164, 175]
+  },
+  overwhelmed: {
+    particle: [148, 163, 184],   // Low sensory muted slate
+    glow: [100, 116, 139],
+    synapse: [100, 116, 139],
+    pointer: [203, 213, 225]
+  }
+};
+
 export default function NeuralBackground() {
   const canvasRef = useRef(null);
 
@@ -47,7 +93,42 @@ export default function NeuralBackground() {
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseleave', onMouseLeave);
 
+    // Smooth color interpolation state
+    let currentThemeKey = document.documentElement.getAttribute('data-theme') || 'dark';
+    let targetColors = THEME_PARTICLE_COLORS[currentThemeKey] || THEME_PARTICLE_COLORS.dark;
+    let activeR = targetColors.particle[0];
+    let activeG = targetColors.particle[1];
+    let activeB = targetColors.particle[2];
+
+    const checkTheme = () => {
+      const newTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+      if (newTheme !== currentThemeKey && THEME_PARTICLE_COLORS[newTheme]) {
+        currentThemeKey = newTheme;
+        targetColors = THEME_PARTICLE_COLORS[newTheme];
+      }
+    };
+
+    const onThemeChange = (e) => {
+      const theme = e.detail?.theme;
+      if (theme && THEME_PARTICLE_COLORS[theme]) {
+        currentThemeKey = theme;
+        targetColors = THEME_PARTICLE_COLORS[theme];
+      }
+    };
+    window.addEventListener('cogflow-theme-change', onThemeChange);
+
     const render = () => {
+      checkTheme();
+
+      // Smooth color lerp towards target theme
+      activeR += (targetColors.particle[0] - activeR) * 0.05;
+      activeG += (targetColors.particle[1] - activeG) * 0.05;
+      activeB += (targetColors.particle[2] - activeB) * 0.05;
+
+      const r = Math.round(activeR);
+      const g = Math.round(activeG);
+      const b = Math.round(activeB);
+
       ctx.clearRect(0, 0, width, height);
 
       // Render & update particles
@@ -71,12 +152,12 @@ export default function NeuralBackground() {
           p.y -= (dy / dist) * force * 1.5;
         }
 
-        // Draw particle dot
+        // Draw particle dot with mood theme color
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(129, 140, 248, ${p.alpha})`;
-        ctx.shadowColor = 'rgba(99, 102, 241, 0.4)';
-        ctx.shadowBlur = 4;
+        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${p.alpha})`;
+        ctx.shadowColor = `rgba(${r}, ${g}, ${b}, 0.5)`;
+        ctx.shadowBlur = 5;
         ctx.fill();
         ctx.shadowBlur = 0;
 
@@ -89,7 +170,7 @@ export default function NeuralBackground() {
             ctx.beginPath();
             ctx.moveTo(p.x, p.y);
             ctx.lineTo(p2.x, p2.y);
-            ctx.strokeStyle = `rgba(99, 102, 241, ${alpha})`;
+            ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
             ctx.lineWidth = 0.8;
             ctx.stroke();
           }
@@ -101,7 +182,7 @@ export default function NeuralBackground() {
           ctx.beginPath();
           ctx.moveTo(p.x, p.y);
           ctx.lineTo(mouse.x, mouse.y);
-          ctx.strokeStyle = `rgba(168, 85, 247, ${alpha})`;
+          ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
           ctx.lineWidth = 1;
           ctx.stroke();
         }
@@ -116,6 +197,7 @@ export default function NeuralBackground() {
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseleave', onMouseLeave);
+      window.removeEventListener('cogflow-theme-change', onThemeChange);
       cancelAnimationFrame(animationFrameId);
     };
   }, []);
@@ -136,4 +218,3 @@ export default function NeuralBackground() {
     />
   );
 }
-

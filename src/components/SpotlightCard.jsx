@@ -5,8 +5,8 @@ export default function SpotlightCard({
   children,
   className = '',
   style = {},
-  spotlightColor = 'rgba(99, 102, 241, 0.15)',
-  borderColor = 'rgba(129, 140, 248, 0.4)',
+  spotlightColor = 'var(--theme-accent-bg, rgba(99, 102, 241, 0.15))',
+  borderColor = 'var(--theme-accent-border, rgba(129, 140, 248, 0.4))',
   interactive = true,
   onClick,
   ...props

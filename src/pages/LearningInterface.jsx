@@ -3,8 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import CognitiveLoadGauge from '../components/CognitiveLoadGauge';
 import SessionTimeline from '../components/SessionTimeline';
-import ContentRenderer, { triggerFileDownload } from '../components/ContentRenderer';
-import TopicAssessment from '../components/TopicAssessment';
+import ContentRenderer from '../components/ContentRenderer';
 import WebcamMonitor from '../components/WebcamMonitor';
 import { SUBJECTS } from '../data/subjects';
 import { saveSession, streamDynamicContent } from '../services/api';
@@ -12,7 +11,7 @@ import { useUser } from '../context/UserContext';
 import {
   Brain, ArrowLeft, ArrowRight, CheckCircle2, Sliders, Activity,
   MousePointer, Scroll, Keyboard, Sparkles, AlertCircle, Clock,
-  Maximize2, Minimize2, Eye, ShieldCheck, ChevronRight, Zap, Check, X, RefreshCw, BookOpen, Download, FileText
+  Maximize2, Minimize2, Eye, ShieldCheck, ChevronRight, Zap, Check, X, RefreshCw, BookOpen, FileText, Workflow, Code2
 } from 'lucide-react';
 
 // ─────────────────────────────────────────────────────────────
@@ -197,11 +196,10 @@ export default function LearningInterface() {
   const [distractionFree,    setDistractionFree]    = useState(false);
   const [activeOverrideText, setActiveOverrideText] = useState(null);
   const [contentSource,      setContentSource]      = useState(null);
-  const [topicAssessments,   setTopicAssessments]   = useState({});
+  const [topicAssessments] = useState({});
   const [isSynthesizing,     setIsSynthesizing]     = useState(false);
   const [dynamicContent,     setDynamicContent]     = useState(null);
-  const [selectedAngle,      setSelectedAngle]      = useState('default');
-  const [reGenTrigger,       setReGenTrigger]       = useState(0);
+  const [studyView,          setStudyView]          = useState('overview');
   const contentTopRef = useRef(null);
   const elapsedRef    = useRef(0);
 
@@ -225,14 +223,6 @@ export default function LearningInterface() {
     return `Building architectural blueprints, code patterns, and invariant analysis tailored to ${currentTopic}.`;
   }, [currentTopic]);
 
-  // Track completion of topic mastery assessment
-  const handleAssessmentComplete = useCallback((assessmentData) => {
-    setTopicAssessments(prev => ({
-      ...prev,
-      [assessmentData.topic]: assessmentData
-    }));
-  }, []);
-
   // Timer
   useEffect(() => {
     if (!isActive) return;
@@ -252,6 +242,7 @@ export default function LearningInterface() {
   useEffect(() => {
     setActiveOverrideText(null);
     setContentSource(null);
+    setStudyView('overview');
   }, [currentTopicIndex]);
 
   const uploadedLesson = topicVersions[currentTopic]?.[currentTier] || '';
@@ -277,7 +268,7 @@ export default function LearningInterface() {
           subject,
           topic: currentTopic,
           tier: currentTier,
-          angle: selectedAngle,
+          angle: 'default',
           signal: controller.signal,
         });
         if (!isCancelled && data?.content) {
@@ -287,7 +278,7 @@ export default function LearningInterface() {
       } catch (err) {
         if (isCancelled || err?.name === 'AbortError') return;
         if (!isCancelled) {
-          setDynamicContent(`## Lesson not ready\n\n${err?.message || 'The local model did not answer.'}\n\nPress Re-Synthesize after Ollama is running.`);
+          setDynamicContent(`## Lesson not ready\n\n${err?.message || 'The local model did not answer.'}`);
           setContentSource('error');
         }
       } finally {
@@ -300,7 +291,7 @@ export default function LearningInterface() {
       isCancelled = true;
       controller.abort();
     };
-  }, [currentTopic, currentTier, selectedAngle, reGenTrigger, subject, uploadedLesson]);
+  }, [currentTopic, currentTier, subject, uploadedLesson]);
 
   // Change tier with a smooth fade + real-time adaptation
   const changeTier = useCallback((newTier, reason = 'manual') => {
@@ -632,91 +623,55 @@ export default function LearningInterface() {
             position: 'relative',
             boxShadow: 'var(--shadow-card)',
           }}>
-            {/* Dynamic Perspective & Angle Selector Bar */}
             <div style={{
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '10px 20px', background: 'rgba(255,255,255,0.02)',
+              padding: '10px 16px', background: 'rgba(255,255,255,0.02)',
               borderBottom: '1px solid rgba(255,255,255,0.06)', flexWrap: 'wrap', gap: 10
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-muted)' }}>
-                <Sparkles size={13} style={{ color: '#818cf8' }} />
-                <span>Angle:</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                 {[
-                  { id: 'default', label: 'Clear explanation' },
-                  { id: 'visual_metaphor', label: 'Everyday example' },
-                  { id: 'production_failure', label: 'Common mistake' },
-                  { id: 'code_deepdive', label: 'Short code example' }
-                ].map(a => (
-                  <button
-                    key={a.id}
-                    onClick={() => setSelectedAngle(a.id)}
-                    style={{
-                      all: 'unset', cursor: 'pointer',
-                      padding: '3px 9px', borderRadius: 6,
-                      fontSize: 11, fontWeight: selectedAngle === a.id ? 700 : 500,
-                      background: selectedAngle === a.id ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.03)',
-                      color: selectedAngle === a.id ? '#c7d2fe' : 'var(--text-muted)',
-                      border: `1px solid ${selectedAngle === a.id ? 'rgba(129,140,248,0.4)' : 'rgba(255,255,255,0.06)'}`,
-                      transition: 'all 0.2s ease'
-                    }}
-                  >
-                    {a.label}
-                  </button>
-                ))}
-
-                {isSynthesizing && (
-                  <div style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 5,
-                    fontSize: 11, fontWeight: 700, color: 'var(--theme-accent, #818cf8)',
-                    background: 'var(--theme-accent-bg, rgba(99,102,241,0.12))',
-                    border: '1px solid var(--theme-accent-border, rgba(129,140,248,0.3))',
-                    padding: '2px 8px', borderRadius: 6
-                  }}>
-                    <RefreshCw size={10} style={{ animation: 'spin 1.2s linear infinite' }} />
-                    <span>Checking the lesson…</span>
-                  </div>
-                )}
+                  { id: 'overview', label: 'Overview', icon: BookOpen },
+                  { id: 'visual', label: 'Visual', icon: Workflow },
+                  { id: 'code', label: 'Code', icon: Code2 },
+                  { id: 'notes', label: 'Notes', icon: ChevronRight },
+                ].map((item) => {
+                  const Icon = item.icon;
+                  const selected = studyView === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setStudyView(item.id)}
+                      style={{
+                        all: 'unset',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        padding: '6px 12px',
+                        borderRadius: 8,
+                        fontSize: 12,
+                        fontWeight: selected ? 700 : 500,
+                        background: selected ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.03)',
+                        color: selected ? '#c7d2fe' : 'var(--text-muted)',
+                        border: `1px solid ${selected ? 'rgba(129,140,248,0.45)' : 'rgba(255,255,255,0.06)'}`,
+                      }}
+                    >
+                      <Icon size={13} />
+                      {item.label}
+                    </button>
+                  );
+                })}
               </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <button
-                  onClick={() => {
-                    const filename = `${currentTopic.replace(/[^a-zA-Z0-9_-]/g, '_')}-StudyNotes.md`;
-                    const notesContent = `# ${currentTopic} — Study Guide\nTier: ${currentTierMeta.label} (${currentTierMeta.short})\nSubject: ${subject}\n\n---\n\n${dynamicContent || activeOverrideText || ''}`;
-                    triggerFileDownload(filename, notesContent, 'text/markdown;charset=utf-8');
-                  }}
-                  title="Download complete study notes as Markdown"
-                  style={{
-                    all: 'unset', cursor: 'pointer',
-                    padding: '4px 10px', borderRadius: 6,
-                    fontSize: 11, fontWeight: 700,
-                    background: 'rgba(56,189,248,0.1)', color: '#38bdf8',
-                    border: '1px solid rgba(56,189,248,0.25)',
-                    display: 'inline-flex', alignItems: 'center', gap: 5,
-                    transition: 'all 0.2s ease'
-                  }}
-                >
-                  <Download size={11} />
-                  Download Notes
-                </button>
-
-                <button
-                  onClick={() => setReGenTrigger(c => c + 1)}
-                  title="Re-synthesize this lesson with Qwen"
-                  style={{
-                    all: 'unset', cursor: 'pointer',
-                    padding: '4px 10px', borderRadius: 6,
-                    fontSize: 11, fontWeight: 700,
-                    background: 'rgba(99,102,241,0.1)', color: '#a5b4fc',
-                    border: '1px solid rgba(99,102,241,0.25)',
-                    display: 'inline-flex', alignItems: 'center', gap: 5,
-                    transition: 'all 0.2s ease'
-                  }}
-                >
-                  <RefreshCw size={11} />
-                  Re-Synthesize
-                </button>
-              </div>
+              {isSynthesizing && (
+                <div style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 5,
+                  fontSize: 11, fontWeight: 700, color: 'var(--theme-accent, #818cf8)',
+                }}>
+                  <RefreshCw size={10} style={{ animation: 'spin 1.2s linear infinite' }} />
+                  <span>Writing the note…</span>
+                </div>
+              )}
             </div>
 
             {/* Reading Content Pane (Instantly visible & interactive in 0ms) */}
@@ -734,6 +689,7 @@ export default function LearningInterface() {
                 customVersions={topicVersions[currentTopic]}
                 activeOverrideText={dynamicContent || activeOverrideText}
                 contentSource={contentSource}
+                view={studyView}
               />
             </div>
 
@@ -814,16 +770,6 @@ export default function LearningInterface() {
               </div>
             </div>
           </div>
-
-          {/* ── Active Recall & Topic Mastery Assessment (MCQs + Qwen AI Typing Evaluation) ── */}
-          <TopicAssessment
-            topicName={currentTopic}
-            tier={currentTier}
-            lessonText={contentSource === 'ollama_qwen_dynamic' || contentSource === 'uploaded_syllabus' ? (dynamicContent || uploadedLesson) : ''}
-            cognitiveLoad={cogLoad}
-            onAssessmentComplete={handleAssessmentComplete}
-            initialResults={topicAssessments[currentTopic]}
-          />
 
           {/* Prev / Next navigation footer */}
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 18, gap: 12, flexWrap: 'wrap' }}>

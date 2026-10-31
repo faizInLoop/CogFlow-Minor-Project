@@ -1,5 +1,6 @@
 import { memo, useEffect, useMemo, useState } from 'react';
 import { Check, ChevronRight, Copy, Sparkles } from 'lucide-react';
+import { codeForTopic, topicCanHaveCode } from '../data/topicCode';
 
 // ============================================================
 // ContentRenderer — Displays Educational Content & Visual Diagrams
@@ -522,9 +523,19 @@ const SECTION_LABEL = {
   'What it is': 'What it is',
   'Why it matters': 'Why it matters',
   'One example': 'Example',
-  'Check yourself': 'Check yourself',
   'A common mistake': 'Common mistake',
 };
+
+function shortPointer(sentence) {
+  const text = sentence.replace(/\s+/g, ' ').trim();
+  if (text.length <= 118) return { pointer: text, clipped: false };
+  const slice = text.slice(0, 108);
+  const comma = slice.lastIndexOf(',');
+  const space = slice.lastIndexOf(' ');
+  const at = comma > 50 ? comma : space;
+  const pointer = `${(at > 40 ? text.slice(0, at) : slice).replace(/[,:;]$/, '').trim()}…`;
+  return { pointer, clipped: true };
+}
 
 function parseLessonPoints(content) {
   return String(content)
@@ -535,24 +546,28 @@ function parseLessonPoints(content) {
       const match = chunk.match(/^##\s+([^\n]+)\n+([\s\S]*)$/);
       if (!match) return null;
       const heading = match[1].trim();
+      if (/check yourself|^code$/i.test(heading)) return null;
       const sentences = splitSentences(match[2]);
       if (sentences.length === 0) return null;
+      const { pointer, clipped } = shortPointer(sentences[0]);
+      const detail = clipped ? sentences : sentences.slice(1);
       return {
         id: heading,
         title: SECTION_LABEL[heading] || heading,
-        sentences,
+        pointer,
+        detail,
       };
     })
     .filter(Boolean);
 }
 
-function LessonPoints({ content }) {
+function LessonPoints({ content, startClosed = false }) {
   const points = useMemo(() => parseLessonPoints(content), [content]);
   const [openIds, setOpenIds] = useState(() => new Set());
 
   useEffect(() => {
-    setOpenIds(new Set(points.slice(0, 3).map((point) => point.id)));
-  }, [content, points]);
+    setOpenIds(new Set(!startClosed && points[0] ? [points[0].id] : []));
+  }, [content, points, startClosed]);
 
   if (points.length === 0) return formatContent(content);
 
@@ -568,7 +583,8 @@ function LessonPoints({ content }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       {points.map((point) => {
-        const open = openIds.has(point.id);
+        const canOpen = point.detail.length > 0;
+        const open = canOpen && openIds.has(point.id);
         return (
           <section
             key={point.id}
@@ -582,14 +598,14 @@ function LessonPoints({ content }) {
             <button
               type="button"
               aria-expanded={open}
-              onClick={() => toggle(point.id)}
+              onClick={() => { if (canOpen) toggle(point.id); }}
               style={{
                 width: '100%',
                 display: 'flex',
-                alignItems: 'center',
+                alignItems: 'flex-start',
                 gap: 10,
                 textAlign: 'left',
-                cursor: 'pointer',
+                cursor: canOpen ? 'pointer' : 'default',
                 background: 'transparent',
                 border: 'none',
                 padding: '13px 14px',
@@ -600,12 +616,28 @@ function LessonPoints({ content }) {
                 size={16}
                 style={{
                   flexShrink: 0,
+                  marginTop: 3,
                   color: 'var(--theme-accent, #818cf8)',
                   transform: open ? 'rotate(90deg)' : 'none',
                   transition: 'transform 0.15s ease',
+                  opacity: canOpen ? 1 : 0.35,
                 }}
               />
-              <span style={{ fontSize: 15, fontWeight: 700, letterSpacing: '-0.01em' }}>{point.title}</span>
+              <span style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                <span style={{
+                  fontSize: 10,
+                  fontWeight: 800,
+                  letterSpacing: '0.08em',
+                  textTransform: 'uppercase',
+                  color: 'var(--text-muted)',
+                }}
+                >
+                  {point.title}
+                </span>
+                <span style={{ fontSize: 15, fontWeight: 650, lineHeight: 1.45, letterSpacing: '-0.01em' }}>
+                  {point.pointer}
+                </span>
+              </span>
             </button>
             {open && (
               <div style={{
@@ -614,11 +646,11 @@ function LessonPoints({ content }) {
                 gap: 8,
                 padding: '0 16px 14px 40px',
               }}>
-                {point.sentences.map((sentence) => (
+                {point.detail.map((sentence) => (
                   <p key={sentence} style={{
                     margin: 0,
                     fontSize: 14.5,
-                    lineHeight: 1.65,
+                    lineHeight: 1.7,
                     color: 'var(--text-secondary)',
                   }}>
                     {renderInline(sentence)}
@@ -633,6 +665,140 @@ function LessonPoints({ content }) {
   );
 }
 
+function Overview({ points }) {
+  const [lead, ...rest] = points;
+  return (
+    <div>
+      <p style={{ margin: '0 0 18px', fontSize: 20, lineHeight: 1.45, fontWeight: 650, letterSpacing: '-0.02em' }}>
+        {lead.pointer}
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {rest.map((point) => (
+          <div key={point.id} style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+            <span style={{
+              flexShrink: 0,
+              width: 118,
+              paddingTop: 3,
+              fontSize: 10,
+              fontWeight: 800,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              color: '#a5b4fc',
+            }}
+            >
+              {point.title}
+            </span>
+            <span style={{ fontSize: 14.5, lineHeight: 1.6, color: 'var(--text-secondary)' }}>{point.pointer}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function LessonFlow({ points }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', maxWidth: 560, margin: '0 auto' }}>
+      {points.map((point, index) => (
+        <div key={point.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <div style={{
+            width: '100%',
+            border: '1px solid rgba(129,140,248,0.35)',
+            borderRadius: 14,
+            padding: '14px 16px',
+            background: 'rgba(129,140,248,0.07)',
+          }}
+          >
+            <div style={{
+              fontSize: 10,
+              fontWeight: 800,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              color: '#a5b4fc',
+            }}
+            >
+              {index + 1}. {point.title}
+            </div>
+            <div style={{ marginTop: 6, fontSize: 14.5, lineHeight: 1.55 }}>{point.pointer}</div>
+          </div>
+          {index < points.length - 1 && (
+            <div aria-hidden="true" style={{ height: 28, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              <div style={{ width: 2, flex: 1, background: 'rgba(129,140,248,0.6)' }} />
+              <div style={{
+                width: 0,
+                height: 0,
+                borderLeft: '6px solid transparent',
+                borderRight: '6px solid transparent',
+                borderTop: '7px solid rgba(129,140,248,0.85)',
+              }}
+              />
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function fencesIn(content) {
+  const blocks = [];
+  const pattern = /```([a-zA-Z0-9]*)\n([\s\S]*?)```/g;
+  let match = pattern.exec(content);
+  while (match) {
+    const code = match[2].trim();
+    if (code) blocks.push({ label: match[1] || 'code', code });
+    match = pattern.exec(content);
+  }
+  return blocks;
+}
+
+function CodeView({ topic, content }) {
+  const saved = codeForTopic(topic);
+  const blocks = saved
+    ? [{ label: saved.label, code: saved.code }]
+    : (topicCanHaveCode(topic) ? fencesIn(content) : []);
+  if (blocks.length === 0) {
+    return (
+      <p style={{ margin: 0, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+        This topic has no code. Use Overview for the idea, Visual for the flow, and Notes for the full explanation.
+      </p>
+    );
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {blocks.map((block) => (
+        <pre key={block.code} style={{
+          margin: 0,
+          padding: '16px 18px',
+          borderRadius: 12,
+          overflowX: 'auto',
+          background: 'rgba(0,0,0,0.28)',
+          border: '1px solid var(--border)',
+          color: '#e2e8f0',
+          fontSize: 13,
+          lineHeight: 1.6,
+          fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+        }}
+        >
+          <div style={{
+            marginBottom: 8,
+            fontSize: 10,
+            fontWeight: 800,
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+            color: '#a5b4fc',
+            fontFamily: 'inherit',
+          }}
+          >
+            {block.label}
+          </div>
+          {block.code}
+        </pre>
+      ))}
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────
 // Main ContentRenderer Component
 // ─────────────────────────────────────────────────────────────
@@ -642,9 +808,14 @@ function ContentRenderer({
   customVersions = null,
   activeOverrideText = null,
   contentSource = null,
+  view = 'overview',
 }) {
   const meta = TIER_META[tier] || TIER_META.tier3;
   const rawContent = activeOverrideText || (customVersions && customVersions[tier]) || '';
+  const points = useMemo(
+    () => (rawContent.includes('\n## ') || rawContent.startsWith('## ') ? parseLessonPoints(rawContent) : []),
+    [rawContent],
+  );
   const sourceLabel = contentSource === 'course_notes'
     ? 'Course notes'
     : contentSource === 'ollama_qwen_dynamic'
@@ -707,11 +878,16 @@ function ContentRenderer({
       </div>
 
       <div style={{ fontSize: 15, lineHeight: 1.75 }}>
-        {rawContent
-          ? (rawContent.includes('\n## ') || rawContent.startsWith('## ')
-            ? <LessonPoints content={rawContent} />
-            : formatContent(rawContent))
-          : <p style={{ color: 'var(--text-secondary)' }}>Checking a lesson on {topic}. It stays hidden until the explanation is complete and stays on this topic.</p>}
+        {!rawContent && (
+          <p style={{ color: 'var(--text-secondary)' }}>
+            Writing the note for {topic}. Overview, Visual, Code, and Notes open when it is ready. A custom topic takes about a minute on this computer.
+          </p>
+        )}
+        {rawContent && points.length === 0 && formatContent(rawContent)}
+        {rawContent && points.length > 0 && view === 'overview' && <Overview points={points} />}
+        {rawContent && points.length > 0 && view === 'visual' && <LessonFlow points={points} />}
+        {rawContent && points.length > 0 && view === 'code' && <CodeView topic={topic} content={rawContent} />}
+        {rawContent && points.length > 0 && view === 'notes' && <LessonPoints content={rawContent} startClosed />}
       </div>
     </article>
   );

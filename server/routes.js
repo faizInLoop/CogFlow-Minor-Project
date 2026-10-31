@@ -131,12 +131,12 @@ router.post('/api/generate-content', async (req, res) => {
   }
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 420000);
+  const timer = setTimeout(() => controller.abort(), 180000);
   res.on('close', () => {
     if (!res.writableEnded) controller.abort();
   });
   try {
-    send({ type: 'status', message: `Checking a lesson on ${topic} before it is shown.` });
+    send({ type: 'status', message: `Writing a note on ${topic}.` });
     const content = await writeCheckedLesson({
       subject,
       topic,

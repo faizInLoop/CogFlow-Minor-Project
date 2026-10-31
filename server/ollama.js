@@ -14,19 +14,19 @@ const cachePath = path.join(__dirname, 'data', 'lesson-cache.json');
 
 const DEPTH = {
   tier1: {
-    label: 'a beginner explanation in short sentences',
-    words: '180 to 240 words',
-    predict: 520,
+    label: 'the easiest true explanation, in short sentences',
+    words: '160 to 220 words',
+    predict: 340,
   },
   tier3: {
-    label: 'a standard course explanation',
-    words: '240 to 320 words',
-    predict: 640,
+    label: 'a clear explanation in plain words',
+    words: '200 to 260 words',
+    predict: 400,
   },
   tier5: {
-    label: 'a precise explanation with one real limit',
-    words: '280 to 360 words',
-    predict: 720,
+    label: 'a precise explanation in plain words, with one real limit',
+    words: '220 to 280 words',
+    predict: 440,
   },
 };
 
@@ -34,7 +34,6 @@ const REQUIRED_HEADINGS = [
   '## What it is',
   '## Why it matters',
   '## One example',
-  '## Check yourself',
   '## A common mistake',
 ];
 
@@ -96,8 +95,14 @@ export function lessonIsOnTopic(topic, text) {
   return hits.length >= Math.min(2, words.length);
 }
 
+function proseOnly(text) {
+  const cleaned = keepLesson(text);
+  const codeAt = cleaned.search(/\n## Code\b/i);
+  return (codeAt >= 0 ? cleaned.slice(0, codeAt) : cleaned).trim();
+}
+
 export function lessonIsReady(topic, text) {
-  const body = keepLesson(text);
+  const body = proseOnly(text);
   if (!lessonIsOnTopic(topic, body)) return false;
   if (!/[.!?]"?\s*$/.test(body)) return false;
   if (/```/.test(body)) return false;
@@ -108,7 +113,7 @@ export function lessonIsReady(topic, text) {
     const next = index + 1 < REQUIRED_HEADINGS.length
       ? body.indexOf(REQUIRED_HEADINGS[index + 1], start + heading.length)
       : body.length;
-    if (next < 0 || next - start < heading.length + 80) return false;
+    if (next < 0 || next - start < heading.length + 70) return false;
   }
   return true;
 }
@@ -141,7 +146,7 @@ export function lessonMessages({ subject, topic, tier, angle }) {
   return [
     {
       role: 'system',
-      content: 'You write study notes a student can trust. Use only standard facts for the topic. If a detail is uncertain, leave it out. Do not invent numbers, dates, people, formulas, or code. No diagrams, tables, or preambles. Finish every sentence.',
+      content: 'You write a study note a student can trust. Use only standard facts. If a detail is uncertain, leave it out. Do not invent numbers, dates, people, or formulas. No diagrams, tables, questions, or preambles. Finish every sentence.',
     },
     {
       role: 'user',
@@ -152,16 +157,18 @@ Length: ${depth.words}
 
 ${angleNote(angle)}
 
-Use exactly these headings, in this order, and put a finished explanation under each one:
+Use exactly these headings, in this order:
 ## What it is
 ## Why it matters
 ## One example
-## Check yourself
 ## A common mistake
 
-Write one idea per sentence. The first sentence under "What it is" must define "${topic}" in plain words. Each later sentence in that section must name one part of the topic and say what it does. Do not use a slogan such as "X is the point" or "this matters" without the fact. The example must walk through one real case using the topic's own terms. "Check yourself" must be two questions a student can answer from this note. "A common mistake" must state the wrong claim and the correction.
+Under each heading, write the point first: one sentence of at most 20 words, in the easiest true words. Then write two or three more short sentences that explain that point. Name the real parts and what each one does. The example walks through one real case. The common mistake states the wrong claim and the correction.
 
-Stay on "${topic}". End with a complete sentence.`,
+Do not ask a question. Stay on "${topic}". End the common-mistake section with a complete sentence.
+
+If "${topic}" is a procedure a programmer writes, add this section after the mistake, with one fenced example of at most 12 lines that matches the note. Do not invent a library. If it is not a program, stop. Do not add code.
+## Code`,
     },
   ];
 }
@@ -200,34 +207,16 @@ export async function writeCheckedLesson({ subject, topic, tier, angle, signal }
   if (saved && lessonIsReady(topic, saved)) return saved;
 
   const depth = DEPTH[tier] || DEPTH.tier3;
-  const draftRaw = await collectChat(lessonMessages({ subject, topic, tier, angle }), {
+  const raw = await collectChat(lessonMessages({ subject, topic, tier, angle }), {
     numPredict: depth.predict,
     signal,
   });
-  const draft = keepLesson(draftRaw);
-  let revisedRaw = await collectChat(reviewMessages(topic, draft), {
-    numPredict: depth.predict,
-    signal,
-  });
-  if (/^REJECTED\b/i.test(revisedRaw.trim())) {
-    throw new Error(`A reliable lesson on “${topic}” could not be checked, so it was not shown. Press Re-Synthesize.`);
+  const lesson = keepLesson(raw);
+  if (!lessonIsReady(topic, lesson)) {
+    throw new Error(`A clear note on “${topic}” was not ready, so it was not shown.`);
   }
-  let revised = keepLesson(revisedRaw);
-  if (!lessonIsReady(topic, revised)) {
-    revisedRaw = await collectChat(reviewMessages(topic, revised || draft), {
-      numPredict: depth.predict,
-      signal,
-    });
-    if (/^REJECTED\b/i.test(revisedRaw.trim())) {
-      throw new Error(`A reliable lesson on “${topic}” could not be checked, so it was not shown. Press Re-Synthesize.`);
-    }
-    revised = keepLesson(revisedRaw);
-  }
-  if (!lessonIsReady(topic, revised)) {
-    throw new Error(`A clear lesson on “${topic}” could not be checked, so it was not shown. Press Re-Synthesize.`);
-  }
-  storeLesson(key, revised);
-  return revised;
+  storeLesson(key, lesson);
+  return lesson;
 }
 
 export async function* streamChat(messages, { numPredict = 420, signal } = {}) {

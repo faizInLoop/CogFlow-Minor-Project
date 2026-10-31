@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import Navbar from '../components/Navbar';
-import { SUBJECTS } from '../data/subjects';
+import { SUBJECTS, generateCustomLessonVersions } from '../data/subjects';
 import { sounds } from '../utils/soundEffects';
 import { 
   ArrowLeft, 
@@ -117,45 +117,53 @@ export default function TopicSelection() {
     const topicText = customTopicInput.trim();
     if (!topicText) return;
     setIsSynthesizing(true);
-    setSynthesizeStatus('Local Qwen 2.5 is synthesizing custom module curriculum...');
+    setSynthesizeStatus('Synthesizing custom multi-tier curriculum for ' + topicText + '...');
+
+    let generatedVersions = null;
 
     try {
-      const res = await fetch('http://localhost:8000/api/generate-lesson', {
+      // 2.0-second race with local backend (if active)
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject('timeout'), 2000));
+      const fetchPromise = fetch('http://localhost:8000/api/generate-lesson', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ topic: topicText }),
+      }).then(res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const newModule = {
-        id: `ai-custom-${Date.now()}`,
-        name: data.topic || topicText,
-        subtopics: ['Intuitive Foundations', 'System Architecture', 'Formal Complexity & Bounds'],
-        versions: data.versions,
-        isAiGenerated: true,
-      };
-      setCustomTopicsList(prev => [...prev, newModule]);
-      setSelectedTopics(prev => [...prev, newModule.id]);
-      setCustomTopicInput('');
-      setSynthesizeStatus('✨ Custom module synthesized and added to track!');
-      setTimeout(() => setSynthesizeStatus(''), 4000);
+
+      const data = await Promise.race([fetchPromise, timeoutPromise]);
+      if (data && data.versions && data.versions.tier3) {
+        generatedVersions = data.versions;
+      }
     } catch (err) {
-      console.warn('Local synthesis notice:', err);
-      // Fallback custom module
-      const newModule = {
-        id: `ai-custom-${Date.now()}`,
-        name: topicText,
-        subtopics: ['Foundational Mental Model', 'Core Architecture Blueprint', 'Production Invariants & Analysis'],
-        isAiGenerated: true,
-      };
-      setCustomTopicsList(prev => [...prev, newModule]);
-      setSelectedTopics(prev => [...prev, newModule.id]);
-      setCustomTopicInput('');
-      setSynthesizeStatus('✨ Custom module synthesized successfully!');
-      setTimeout(() => setSynthesizeStatus(''), 4000);
-    } finally {
-      setIsSynthesizing(false);
+      // Backend offline or busy — immediately use instant educational synthesizer engine
     }
+
+    // Always synthesize tailored multi-tier curriculum (never empty or generic!)
+    if (!generatedVersions) {
+      generatedVersions = generateCustomLessonVersions(topicText);
+    }
+
+    const newModule = {
+      id: `custom-${topicText.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${Date.now()}`,
+      name: topicText,
+      subtopics: [
+        `${topicText} Foundations & Intuition`,
+        `${topicText} Core Architecture & Mechanics`,
+        `${topicText} Invariants & Advanced Bounds`
+      ],
+      versions: generatedVersions,
+      isAiGenerated: true,
+    };
+
+    setCustomTopicsList(prev => [...prev, newModule]);
+    setSelectedTopics(prev => [...prev, newModule.id]);
+    setCustomTopicInput('');
+    setSynthesizeStatus(`✨ Custom curriculum for "${topicText}" synthesized successfully!`);
+    setTimeout(() => setSynthesizeStatus(''), 4500);
+    setIsSynthesizing(false);
   };
 
   const handleDrop = (e) => {

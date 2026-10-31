@@ -544,7 +544,7 @@ export default function UserProfile() {
               Personal Biometric Calibration Settings
             </h2>
             <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 22, lineHeight: 1.6, maxWidth: 640 }}>
-              These geometric thresholds calibrate the MediaPipe and BiLSTM neural inference to your individual resting baseline, ensuring expressions of curiosity are not misclassified as frustration.
+              The webcam classifier runs in the browser on a model trained from DAiSEE expression windows. These saved baselines are kept with your profile and are not used to upload video.
             </p>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16, marginBottom: 24 }}>

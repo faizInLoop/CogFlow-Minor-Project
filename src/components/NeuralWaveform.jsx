@@ -177,7 +177,7 @@ export default function NeuralWaveform({ defaultBand = 'alpha' }) {
               </span>
             </div>
             <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-              BiLSTM Real-Time Hidden State Dynamics
+              DAiSEE expression-window stream
             </div>
           </div>
         </div>

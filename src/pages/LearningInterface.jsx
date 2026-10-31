@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import CognitiveLoadGauge from '../components/CognitiveLoadGauge';
@@ -6,7 +6,7 @@ import SessionTimeline from '../components/SessionTimeline';
 import ContentRenderer, { getEducationalImageUrl, triggerFileDownload } from '../components/ContentRenderer';
 import TopicAssessment from '../components/TopicAssessment';
 import WebcamMonitor from '../components/WebcamMonitor';
-import { SUBJECTS } from '../data/subjects';
+import { SUBJECTS, getContent } from '../data/subjects';
 import { saveSession, generateDynamicContent } from '../services/api';
 import { useUser } from '../context/UserContext';
 import {
@@ -28,7 +28,7 @@ const TIER_META = {
 // ─────────────────────────────────────────────────────────────
 // Real-time interaction telemetry monitor
 // ─────────────────────────────────────────────────────────────
-function useSignalMonitor(isActive, currentTier) {
+function useSignalMonitor(isActive, currentTier, faceActiveRef) {
   const [signals, setSignals]         = useState({ mouseVelocity: 0, scrollRate: 0, typingPace: 0 });
   const [cogLoad, setCogLoad]         = useState(50);    // 0-100, for the gauge
   const [suggestion, setSuggestion]   = useState(null);  // 'simpler' | 'harder' | null
@@ -109,6 +109,8 @@ function useSignalMonitor(isActive, currentTier) {
       if (avgVel > 55) load = Math.max(10, 50 - (avgVel - 55) * 0.8);
       else if (avgVel < 15) load = Math.min(90, 50 + (15 - avgVel) * 2);
       load = Math.round(load);
+      if (faceActiveRef?.current) return;
+
       setCogLoad(load);
 
       const tier = currentTierRef.current;
@@ -206,7 +208,8 @@ export default function LearningInterface() {
   const contentTopRef = useRef(null);
   const elapsedRef    = useRef(0);
 
-  const { signals, cogLoad, setCogLoad, suggestion, setSuggestion, dismissSuggestion } = useSignalMonitor(isActive, currentTier);
+  const faceActiveRef = useRef(false);
+  const { signals, cogLoad, setCogLoad, suggestion, setSuggestion, dismissSuggestion } = useSignalMonitor(isActive, currentTier, faceActiveRef);
 
   const currentTierMeta = TIER_META[currentTier];
   const currentTopic    = topicNames[currentTopicIndex] || topicNames[0] || 'Core Principles';
@@ -900,6 +903,7 @@ export default function LearningInterface() {
               <WebcamMonitor
                 onCognitiveLoadUpdate={setCogLoad}
                 onTriggerSuggestion={setSuggestion}
+                onFaceActive={(active) => { faceActiveRef.current = active; }}
               />
             </div>
 

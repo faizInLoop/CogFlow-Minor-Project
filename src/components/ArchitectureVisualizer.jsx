@@ -6,27 +6,27 @@ const NODES = [
   {
     id: 'vision',
     title: 'Tier 1: Biometric Edge Mesh',
-    subtitle: 'MediaPipe 478 Landmark Extraction',
+    subtitle: 'Browser expression net',
     icon: <Cpu size={20} color="var(--indigo-light)" />,
     color: '#818cf8',
     stats: { latency: '12 ms', throughput: '60 FPS', privacy: '100% In-Memory' },
     details: [
-      'Extracts 478 3D facial landmarks directly in browser memory via WebAssembly/GPU acceleration.',
-      'Tracks Facial Action Units: AU4 (corrugator supercilii / brow furrow) and AU7 (orbicularis oculi / squint).',
-      'Zero video persistence: webcam buffers are purged immediately after landmark coordinate vectorization.'
+      'Reads seven expression channels in the browser: angry, disgust, fear, happy, sad, surprise, and neutral.',
+      'Builds the same 11-frame summary used to train the DAiSEE model.',
+      'The camera stream never leaves the browser.',
     ]
   },
   {
     id: 'bilstm',
     title: 'Tier 2: Temporal Inference Engine',
-    subtitle: 'DAiSEE BiLSTM ONNX Classifier',
+    subtitle: 'DAiSEE TensorFlow.js classifier',
     icon: <Zap size={20} color="#34d399" />,
     color: '#34d399',
     stats: { latency: '18 ms', modelSize: '4.2 MB', window: '30s Sustained' },
     details: [
-      'Bidirectional LSTM models temporal dependencies across consecutive 1-second landmark windows.',
-      'Enforces the 30-Second Sustained Rule to prevent false adaptations caused by momentary glances or blinks.',
-      'Outputs tri-state softmax probability distribution over Flow, Overload, and Boredom.'
+      'Classifies each 28-number expression window as flow, overload, or boredom.',
+      'Waits for 30 seconds of the same state before suggesting an easier or harder lesson.',
+      'Reports a probability for each of the three learning states.'
     ]
   },
   {

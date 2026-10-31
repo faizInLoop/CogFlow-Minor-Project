@@ -15,21 +15,21 @@ import {
 const FEATURES = [
   {
     icon: ScanFace,
-    title: 'MediaPipe FACS Telemetry',
-    tag: 'Edge Vision',
-    desc: 'Extracts 52 facial blendshapes including AU4 brow furrow and AU7 squint directly in-memory at 60 FPS without retaining video frames.'
+    title: 'On-device expression window',
+    tag: 'Private vision',
+    desc: 'Reads facial expressions in the browser and keeps the video on this device. Frames are not uploaded.'
   },
   {
     icon: Brain,
-    title: 'DAiSEE BiLSTM ONNX Engine',
-    tag: 'Temporal AI',
-    desc: 'Bidirectional sequence network trained on empirical student cognitive datasets, running lightweight sub-millisecond inference.'
+    title: 'DAiSEE TensorFlow.js model',
+    tag: 'Cognitive states',
+    desc: 'A small network trained on DAiSEE expression windows. It classifies flow, overload, and boredom from an 11-frame summary.'
   },
   {
     icon: Sparkles,
-    title: 'Local Qwen 2.5 Synthesizer',
-    tag: 'Zero-Slop AI',
-    desc: 'No static textbook text. Pure dynamic on-the-fly curriculum and quiz synthesis tailored to your exact cognitive mastery tier.'
+    title: 'Instant tiered lessons',
+    tag: 'Curriculum',
+    desc: 'Each topic is served at simplified, standard, and expert depth as soon as you open it, without waiting on a separate model server.'
   },
   {
     icon: Activity,

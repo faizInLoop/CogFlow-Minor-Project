@@ -1,22 +1,20 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Camera, CameraOff, Eye, EyeOff, AlertCircle, CheckCircle2, Brain, Zap, Sparkles, Activity, ShieldCheck, Wifi, WifiOff } from 'lucide-react';
+import { Camera, CameraOff, Eye, EyeOff, AlertCircle, Brain, Sparkles, Activity } from 'lucide-react';
+import { WINDOW_SIZE } from '../../shared/cognitiveFeatures';
 
-const API_BASE = 'http://localhost:8000';
-
-export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggestion }) {
+export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggestion, onFaceActive }) {
   const [cameraActive, setCameraActive] = useState(false);
   const [showPreview, setShowPreview] = useState(true);
   const [isCalibrating, setIsCalibrating] = useState(false);
   const [calibProgress, setCalibProgress] = useState(0);
-  const [backendConnected, setBackendConnected] = useState(false);
+  const [modelReady, setModelReady] = useState(false);
   
   // Real-time analysis states
   const [detectedState, setDetectedState] = useState('Idle');
   const [stateReason, setStateReason] = useState('Camera inactive');
   const [confidence, setConfidence] = useState(0);
-  const [modelName, setModelName] = useState('DAiSEE BiLSTM');
   const [probabilities, setProbabilities] = useState({ flow: 0.33, overload: 0.33, boredom: 0.33 });
-  const [metrics, setMetrics] = useState({ brow_down: 0, blink: 0, squint: 0, pitch_ratio: 0 });
+  const [metrics, setMetrics] = useState({ neutral: 0, happy: 0, tension: 0 });
   const [errorMsg, setErrorMsg] = useState(null);
 
   // 30-Second Rule Tracking
@@ -24,14 +22,8 @@ export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggesti
   const [sustainedSeconds, setSustainedSeconds] = useState(0);
 
   const videoRef = useRef(null);
-  const canvasRef = useRef(null);
   const streamRef = useRef(null);
   const intervalRef = useRef(null);
-  
-  // Personal baseline calibration
-  const baseBrowRef = useRef(0.005);
-  const baseSquintRef = useRef(0.35);
-  const calibSamplesRef = useRef([]);
 
   // Sustained tracking refs to avoid stale closures
   const sustainedStateRef = useRef('Flow');
@@ -40,9 +32,11 @@ export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggesti
   // Store parent callbacks in refs so interval does NOT restart on parent re-renders
   const onCognitiveLoadUpdateRef = useRef(onCognitiveLoadUpdate);
   const onTriggerSuggestionRef = useRef(onTriggerSuggestion);
+  const onFaceActiveRef = useRef(onFaceActive);
   useEffect(() => {
     onCognitiveLoadUpdateRef.current = onCognitiveLoadUpdate;
     onTriggerSuggestionRef.current = onTriggerSuggestion;
+    onFaceActiveRef.current = onFaceActive;
   });
 
   // ── Callback ref: invoked immediately when <video> DOM node is mounted ──
@@ -56,27 +50,12 @@ export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggesti
     }
   }, []);
 
-  // ── Lightweight Health Check to Port 8000 on mount ──
   useEffect(() => {
     let isMounted = true;
-    const checkBackend = async () => {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 1000);
-        const res = await fetch(`${API_BASE}/`, { method: 'GET', signal: controller.signal });
-        clearTimeout(timeoutId);
-        if (isMounted) setBackendConnected(res.ok);
-      } catch {
-        if (isMounted) setBackendConnected(false);
-      }
-    };
-    checkBackend();
-    // 15-second non-blocking interval to avoid browser network queue congestion
-    const pingTimer = setInterval(checkBackend, 15000);
-    return () => {
-      isMounted = false;
-      clearInterval(pingTimer);
-    };
+    fetch('/models/cogflow/model.json')
+      .then((response) => { if (isMounted) setModelReady(response.ok); })
+      .catch(() => { if (isMounted) setModelReady(false); });
+    return () => { isMounted = false; };
   }, []);
 
   // ── Sync video element with stream on preview/cameraActive toggle ──
@@ -141,6 +120,7 @@ export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggesti
     setStateReason('Camera inactive');
     setSustainedSeconds(0);
     sustainedSecsRef.current = 0;
+    onFaceActiveRef.current?.(false);
   }, []);
 
   // Stop camera on unmount
@@ -150,145 +130,98 @@ export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggesti
     };
   }, [stopCamera]);
 
-  // ── Process Frame Analysis Loop (Runs continuously when cameraActive is true) ──
+  // Expression window stays in the browser. Frames are never uploaded.
   useEffect(() => {
     if (!cameraActive) {
       if (intervalRef.current) clearInterval(intervalRef.current);
-      return;
+      return undefined;
     }
 
-    // Capture and analyze 1 frame every 1 second
-    intervalRef.current = setInterval(async () => {
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-      if (!video || !canvas) return;
+    let cancelled = false;
+    const frames = [];
+    let lastStamp = performance.now();
+    let busy = false;
+    let engine = null;
 
-      // Re-link stream if detached
+    const tick = async () => {
+      if (busy || cancelled) return;
+      const video = videoRef.current;
+      if (!video || video.readyState < 2 || video.videoWidth === 0) return;
       if (streamRef.current && video.srcObject !== streamRef.current) {
         video.srcObject = streamRef.current;
-        video.play().catch(console.warn);
+        video.play().catch(() => {});
       }
 
-      // Check video has live frames
-      if (video.readyState < 2 || video.videoWidth === 0) {
-        return;
-      }
-
-      canvas.width = 320;
-      canvas.height = 240;
-
-      const ctx = canvas.getContext('2d');
-      // Standard mirror transform on canvas
-      ctx.save();
-      ctx.translate(320, 0);
-      ctx.scale(-1, 1);
-      ctx.drawImage(video, 0, 0, 320, 240);
-      ctx.restore();
-
-      const base64Image = canvas.toDataURL('image/jpeg', 0.65);
-
+      busy = true;
+      const now = performance.now();
+      const deltaSec = Math.min(1.5, (now - lastStamp) / 1000);
+      lastStamp = now;
       try {
-        const response = await fetch(`${API_BASE}/api/analyze-frame`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            image: base64Image,
-            base_brow: baseBrowRef.current,
-            base_squint: baseSquintRef.current
-          })
-        });
+        if (!engine) engine = await import('../ml/cognitiveEngine');
+        const stack = await engine.loadCognitiveStack();
+        if (cancelled) return;
+        setModelReady(true);
+        const vector = await engine.readExpression(video);
+        if (cancelled) return;
 
-        if (!response.ok) {
-          setBackendConnected(false);
+        if (!vector) {
+          onFaceActiveRef.current?.(false);
+          setStateReason('Center your face in the camera. Video stays on this device.');
+          if (frames.length >= WINDOW_SIZE) setDetectedState('No Face Detected');
           return;
         }
 
-        const data = await response.json();
-        setBackendConnected(true);
+        frames.push(vector);
+        if (frames.length > WINDOW_SIZE) frames.shift();
+        onFaceActiveRef.current?.(true);
+        setMetrics({
+          neutral: vector[6],
+          happy: vector[3],
+          tension: vector[0] + vector[2] + vector[4],
+        });
 
-        if (data.status === 'success' && data.face_detected) {
-          const currentMetrics = data.metrics || {};
-          setMetrics(currentMetrics);
-          if (data.confidence) setConfidence(data.confidence);
-          if (data.model_name) setModelName(data.model_name);
-          if (data.probabilities) setProbabilities(data.probabilities);
-
-          // ── Calibration Stage (First 5 seconds) ──
-          if (calibSamplesRef.current.length < 5) {
-            calibSamplesRef.current.push({
-              brow: currentMetrics.brow_down || 0.005,
-              squint: currentMetrics.squint || 0.35
-            });
-            const progress = calibSamplesRef.current.length;
-            setCalibProgress(progress);
-            setDetectedState(`Calibrating (${progress}/5s)`);
-            setStateReason('Hold neutral gaze while model maps your resting facial shape');
-
-            if (progress >= 5) {
-              const avgBrow = calibSamplesRef.current.reduce((a, b) => a + b.brow, 0) / 5;
-              const avgSquint = calibSamplesRef.current.reduce((a, b) => a + b.squint, 0) / 5;
-              baseBrowRef.current = avgBrow;
-              baseSquintRef.current = avgSquint;
-              setIsCalibrating(false);
-              setDetectedState(data.state_label || 'Flow (Optimal)');
-              setStateReason('Baseline calibrated! Real-time AI monitoring active.');
-            }
-            return;
-          }
-
-          // ── Active Neural Classification Stage ──
-          const stateCode = data.cognitive_state; // 0=Flow, 1=Overload, 2=Boredom
-          const label = data.state_label || 'Flow (Optimal)';
-          setDetectedState(label);
-          setStateReason(data.reason || '');
-
-          // Update Cognitive Load Gauge (0 to 100 continuous score from Bayesian Ensemble)
-          const continuousLoad = data.cognitive_load !== undefined ? data.cognitive_load : (stateCode === 1 ? 82 : (stateCode === 2 ? 22 : 48));
-          
-          if (onCognitiveLoadUpdateRef.current) {
-            onCognitiveLoadUpdateRef.current(continuousLoad);
-          }
-
-          // ── 30-Second Sustained Decision Rule ──
-          const currentCategory = stateCode === 1 ? 'Overload' : (stateCode === 2 ? 'Boredom' : 'Flow');
-          
-          if (currentCategory === sustainedStateRef.current) {
-            sustainedSecsRef.current += 1;
-          } else {
-            sustainedStateRef.current = currentCategory;
-            sustainedSecsRef.current = 1;
-          }
-
-          setSustainedState(sustainedStateRef.current);
-          setSustainedSeconds(sustainedSecsRef.current);
-
-          // Trigger prompt when 30 consecutive seconds of Overload or Boredom is reached
-          if (sustainedSecsRef.current >= 30) {
-            if (sustainedStateRef.current === 'Overload' && onTriggerSuggestionRef.current) {
-              onTriggerSuggestionRef.current('simpler');
-            } else if (sustainedStateRef.current === 'Boredom' && onTriggerSuggestionRef.current) {
-              onTriggerSuggestionRef.current('harder');
-            }
-            // Reset counter to avoid duplicate firing
-            sustainedSecsRef.current = 0;
-            setSustainedSeconds(0);
-          }
-
-        } else if (!data.face_detected) {
-          if (calibSamplesRef.current.length < 5) {
-            setStateReason('Please center your face in the camera view');
-          } else {
-            setDetectedState('No Face Detected');
-            setStateReason(data.reason || 'Please face the camera directly to track focus');
-          }
+        if (frames.length < WINDOW_SIZE) {
+          setIsCalibrating(true);
+          setCalibProgress(frames.length);
+          setDetectedState(`Calibrating (${frames.length}/${WINDOW_SIZE})`);
+          setStateReason('Look at the lesson naturally while the on-device model fills an 11-frame window.');
+          return;
         }
-      } catch (err) {
-        setBackendConnected(false);
-        setStateReason('FastAPI backend offline on port 8000');
-      }
-    }, 1000);
 
+        const data = engine.classificationFromWindow(stack, frames);
+        setIsCalibrating(false);
+        setConfidence(data.confidence);
+        setProbabilities(data.probabilities);
+        setDetectedState(data.state_label);
+        setStateReason(data.reason);
+        onCognitiveLoadUpdateRef.current?.(data.cognitive_load);
+
+        const category = data.cognitive_state === 1 ? 'Overload' : (data.cognitive_state === 2 ? 'Boredom' : 'Flow');
+        if (category === sustainedStateRef.current) sustainedSecsRef.current += deltaSec;
+        else {
+          sustainedStateRef.current = category;
+          sustainedSecsRef.current = deltaSec;
+        }
+        setSustainedState(category);
+        setSustainedSeconds(Math.floor(sustainedSecsRef.current));
+        if (sustainedSecsRef.current >= 30 && category !== 'Flow') {
+          if (category === 'Overload') onTriggerSuggestionRef.current?.('simpler');
+          if (category === 'Boredom') onTriggerSuggestionRef.current?.('harder');
+          sustainedSecsRef.current = 0;
+          setSustainedSeconds(0);
+        }
+      } catch (error) {
+        setModelReady(false);
+        onFaceActiveRef.current?.(false);
+        setStateReason(error?.message || 'The on-device model could not start. Run npm run train.');
+      } finally {
+        busy = false;
+      }
+    };
+
+    intervalRef.current = setInterval(tick, 400);
     return () => {
+      cancelled = true;
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, [cameraActive]);
@@ -342,9 +275,9 @@ export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggesti
             <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 5 }}>
               <span style={{
                 display: 'inline-block', width: 6, height: 6, borderRadius: '50%',
-                background: backendConnected ? '#10b981' : '#f43f5e'
+                background: modelReady ? '#10b981' : '#f59e0b'
               }} />
-              {backendConnected ? 'DAiSEE BiLSTM Connected' : 'Port 8000 Disconnected'}
+              {modelReady ? 'On-device DAiSEE model' : 'Model file not loaded'}
             </div>
           </div>
         </div>
@@ -483,8 +416,7 @@ export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggesti
         </div>
       )}
 
-      {/* Hidden processing canvas */}
-      <canvas ref={canvasRef} style={{ display: 'none' }} />
+      {/* Video is analyzed in memory. Nothing is drawn to a canvas or uploaded. */}
 
       {/* Real-Time Telemetry & Sustained Window Meter */}
       {cameraActive ? (
@@ -501,7 +433,7 @@ export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggesti
                 {detectedState}
               </span>
               <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-                AU4: {metrics.brow_down?.toFixed(3)}
+                Neutral {Math.round((metrics.neutral || 0) * 100)}%
               </span>
             </div>
             <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4, lineHeight: 1.4 }}>
@@ -552,10 +484,10 @@ export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggesti
             <div style={{ background: 'rgba(99,102,241,0.06)', padding: '8px 10px', borderRadius: 8, border: '1px solid rgba(99,102,241,0.2)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--indigo-light)', marginBottom: 4 }}>
                 <span>Calibrating Personal Baseline</span>
-                <span style={{ fontWeight: 700 }}>{calibProgress}/5s</span>
+                <span style={{ fontWeight: 700 }}>{calibProgress}/{WINDOW_SIZE}</span>
               </div>
               <div style={{ height: 4, borderRadius: 99, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${(calibProgress / 5) * 100}%`, background: 'var(--indigo-light)', transition: 'width 0.5s ease' }} />
+                <div style={{ height: '100%', width: `${(calibProgress / WINDOW_SIZE) * 100}%`, background: 'var(--indigo-light)', transition: 'width 0.5s ease' }} />
               </div>
             </div>
           )}

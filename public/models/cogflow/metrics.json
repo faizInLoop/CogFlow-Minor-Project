@@ -1,0 +1,61 @@
+{
+  "dataset": "DAiSEE window summaries",
+  "features": [
+    "Angry_mean",
+    "Angry_std",
+    "Angry_max",
+    "Angry_trend",
+    "Disgust_mean",
+    "Disgust_std",
+    "Disgust_max",
+    "Disgust_trend",
+    "Fear_mean",
+    "Fear_std",
+    "Fear_max",
+    "Fear_trend",
+    "Happy_mean",
+    "Happy_std",
+    "Happy_max",
+    "Happy_trend",
+    "Sad_mean",
+    "Sad_std",
+    "Sad_max",
+    "Sad_trend",
+    "Surprise_mean",
+    "Surprise_std",
+    "Surprise_max",
+    "Surprise_trend",
+    "Neutral_mean",
+    "Neutral_std",
+    "Neutral_max",
+    "Neutral_trend"
+  ],
+  "labels": [
+    "flow",
+    "overload",
+    "boredom"
+  ],
+  "train_rows": 5335,
+  "val_rows": 1415,
+  "test_rows": 1415,
+  "test_accuracy": 0.6198,
+  "test_macro_f1": 0.3284,
+  "confusion_matrix": [
+    [
+      840,
+      30,
+      128
+    ],
+    [
+      116,
+      9,
+      20
+    ],
+    [
+      231,
+      13,
+      28
+    ]
+  ],
+  "trained_at": "2026-10-31T16:37:04.248Z"
+}

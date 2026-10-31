@@ -45,3 +45,6 @@ chroma_db/
 *.sqlite
 *.sqlite3
 backend/cogflow.db
+
+# Embedded MongoDB files created at runtime
+server/data/mongo/

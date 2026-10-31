@@ -125,7 +125,7 @@ export default function BiometricPlayground() {
             Interactive Neural Telemetry Engine
           </div>
           <h3 style={{ fontSize: 20, fontWeight: 800, color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.01em' }}>
-            Live DAiSEE BiLSTM Simulation Playground
+            Live DAiSEE expression model
           </h3>
           <p style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginTop: 4, maxWidth: 540 }}>
             Drag the facial tension and interaction telemetry sliders below to watch the inference model recalculate cognitive load and rewrite curriculum depth.

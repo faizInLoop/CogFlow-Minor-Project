@@ -339,6 +339,21 @@ function InteractiveDiagramSuite({ topic, tier, customImageUrl, fullContent }) {
   const diagramData = useMemo(() => {
     const t = (topic || '').toLowerCase();
 
+    // 0. Adversarial Search, Minimax & Game Theory
+    if (t.includes('minimax') || t.includes('game tree') || t.includes('alpha-beta') || t.includes('alpha beta') || t.includes('adversarial') || t.includes('game theory') || t.includes('chess') || t.includes('search tree')) {
+      return {
+        title: `${topic} — Adversarial Search & Decision Pipeline`,
+        category: 'Game Theory & Search Architecture',
+        nodes: [
+          { label: '1. Root Game State', sub: 'Initial Position S_0', formula: 'Utility v = 0', desc: 'Current board configuration and legal move generator for the active player.', icon: '♟️' },
+          { label: '2. Game Tree Expansion', sub: 'Branching Factor b^d', formula: 'DFS Traversal', desc: 'Recursive depth-first traversal generating possible future moves across game plies.', icon: '🌳' },
+          { label: '3. Min/Max Payoffs', sub: 'Adversarial Valuation', formula: 'max(children) / min', desc: 'Propagates terminal leaf evaluations up the tree assuming optimal opponent play.', icon: '⚖️' },
+          { label: '4. Alpha-Beta Cutoff', sub: 'Pruning Optimization', formula: 'α ≥ β Bound', desc: 'Prunes redundant branches where α >= β, reducing time complexity from O(b^d) to O(b^{d/2}).', icon: '⚡' }
+        ]
+      };
+    }
+
+
     // 1. Physics / Newton's Laws / Mechanics
     if (t.includes('newton') || t.includes('motion') || t.includes('gravity') || t.includes('gravitation') || t.includes('force') || t.includes('physics') || t.includes('mechanic') || t.includes('momentum') || t.includes('velocity')) {
       return {

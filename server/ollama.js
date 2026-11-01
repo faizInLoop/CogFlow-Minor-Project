@@ -40,7 +40,9 @@ const REQUIRED_HEADINGS = [
   '## Why it matters',
   '## One example',
   '## A common mistake',
+  '## Check yourself',
 ];
+const OPTIONAL_CODE_HEADING = '## Code';
 
 function readCache() {
   try {
@@ -162,78 +164,93 @@ export function lessonIsOnTopic(topic, text) {
   return hits.length >= Math.min(2, words.length);
 }
 
-function proseOnly(text) {
-  const cleaned = keepLesson(text);
-  const codeAt = cleaned.search(/\n## Code\b/i);
-  return (codeAt >= 0 ? cleaned.slice(0, codeAt) : cleaned).trim();
+function lessonSentences(text) {
+  return text.split(/\r?\n/)
+    .map((line) => line.replace(/^\s*(?:[-*+]|\d+\.)\s+/, '').trim())
+    .filter(Boolean)
+    .flatMap((line) => line.split(/(?<=[.!?])\s+(?=[A-Z0-9])/))
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+}
+
+function normalizedLessonText(text) {
+  return text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+}
+
+function hasLessonPlaceholder(text) {
+  return /execution topology|universalcontroller|committed invariant|conceptual blueprint|lorem ipsum|as an ai|understand the exact constraints|standard solutions degrade|\bTODO\b|insert (?:topic|example|content)|placeholder/i.test(text);
+}
+
+function lessonParts(text) {
+  const cleaned = stripDiagrams(text);
+  const withoutCodeBlocks = cleaned.replace(/```[\s\S]*?```/g, '');
+  const headings = withoutCodeBlocks.split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => /^#{1,6}\s/.test(line));
+  const codeHeadingAt = cleaned.search(/^## Code\s*$/m);
+  const prose = (codeHeadingAt >= 0 ? cleaned.slice(0, codeHeadingAt) : cleaned).trim();
+  const sections = new Map(REQUIRED_HEADINGS.map((heading) => [heading, '']));
+  const lines = prose.split(/\r?\n/);
+  let currentHeading = null;
+  for (const line of lines) {
+    const heading = line.trim();
+    if (sections.has(heading)) {
+      currentHeading = heading;
+      continue;
+    }
+    if (currentHeading) sections.set(currentHeading, `${sections.get(currentHeading)}\n${line}`);
+  }
+  return { cleaned, withoutCodeBlocks, headings, prose, sections };
 }
 
 export function lessonIsReady(topic, text) {
-  const body = proseOnly(text);
-  if (!lessonIsOnTopic(topic, body)) return false;
-  if (!/[.!?]"?\s*$/.test(body)) return false;
-  if (/```/.test(body)) return false;
-  const headings = body.split('\n')
-    .map((line) => line.trim())
-    .filter((line) => /^#{2,6}\s/.test(line));
-  if (headings.length !== REQUIRED_HEADINGS.length
-    || !REQUIRED_HEADINGS.every((heading, index) => headings[index] === heading)) return false;
-  for (let index = 0; index < REQUIRED_HEADINGS.length; index += 1) {
-    const heading = REQUIRED_HEADINGS[index];
-    const start = body.indexOf(heading);
-    if (start < 0) return false;
-    const next = index + 1 < REQUIRED_HEADINGS.length
-      ? body.indexOf(REQUIRED_HEADINGS[index + 1], start + heading.length)
-      : body.length;
-    if (next < 0 || next - start < heading.length + 70) return false;
+  const { cleaned, withoutCodeBlocks, headings, prose, sections } = lessonParts(text);
+  if (/^#{3,6}\s/m.test(withoutCodeBlocks)) return false;
+  const expectedHeadings = [...REQUIRED_HEADINGS];
+  if (headings.includes(OPTIONAL_CODE_HEADING)) expectedHeadings.push(OPTIONAL_CODE_HEADING);
+  if (headings.length !== expectedHeadings.length
+    || !expectedHeadings.every((heading, index) => headings[index] === heading)) return false;
+
+  const firstHeadingAt = prose.search(/^## /m);
+  if (firstHeadingAt < 0 || prose.slice(0, firstHeadingAt).trim()) return false;
+  if (!lessonIsOnTopic(topic, prose)) return false;
+  if (hasLessonPlaceholder(prose)) return false;
+
+  const topicKey = normalizedLessonText(topic);
+  const seenSentences = new Set();
+  for (const heading of REQUIRED_HEADINGS) {
+    const sentences = lessonSentences(sections.get(heading));
+    if (sentences.length < 2 || sentences.length > 4) return false;
+    for (const sentence of sentences) {
+      const key = normalizedLessonText(sentence);
+      const wordCount = sentence.match(/\b[\p{L}\p{N}'-]+\b/gu)?.length || 0;
+      if (wordCount > 35 || !/[.!?]["')\]]?$/.test(sentence) || key === topicKey || seenSentences.has(key)) return false;
+      seenSentences.add(key);
+    }
+  }
+
+  const codeAt = cleaned.search(/^## Code\s*$/m);
+  if (codeAt >= 0) {
+    const code = cleaned.slice(codeAt).replace(/^## Code\s*/m, '').trim();
+    const block = code.match(/```[^\n]*\n([\s\S]*?)```/);
+    if (!block || block[1].split(/\r?\n/).length > 12) return false;
   }
   return true;
 }
 
-function canonicalLesson(text) {
-  const sections = new Map(REQUIRED_HEADINGS.map((heading) => [heading, []]));
-  const aliases = new Map([
-    ['what it is', REQUIRED_HEADINGS[0]],
-    ['definition', REQUIRED_HEADINGS[0]],
-    ['overview', REQUIRED_HEADINGS[0]],
-    ['how it works', REQUIRED_HEADINGS[0]],
-    ['why it matters', REQUIRED_HEADINGS[1]],
-    ['why this matters', REQUIRED_HEADINGS[1]],
-    ['importance', REQUIRED_HEADINGS[1]],
-    ['one example', REQUIRED_HEADINGS[2]],
-    ['example', REQUIRED_HEADINGS[2]],
-    ['worked example', REQUIRED_HEADINGS[2]],
-    ['a common mistake', REQUIRED_HEADINGS[3]],
-    ['common mistake', REQUIRED_HEADINGS[3]],
-    ['common mistakes', REQUIRED_HEADINGS[3]],
-    ['misconception', REQUIRED_HEADINGS[3]],
-    ['pitfalls', REQUIRED_HEADINGS[3]],
-  ]);
-  let currentSection = null;
+function mustTryNextProvider(topic, text) {
+  const { withoutCodeBlocks, prose } = lessonParts(text);
+  if (/^#{3,6}\s/m.test(withoutCodeBlocks)) return true;
+  if (hasLessonPlaceholder(prose)) return true;
 
-  for (const line of stripDiagrams(text).split('\n')) {
-    const heading = line.trim().match(/^#{1,6}\s+(.+)$/);
-    if (heading) {
-      const label = heading[1].replace(/[*_`]/g, '').trim().toLowerCase().replace(/[:.]+$/, '');
-      if (/^(check yourself|code|code example|key takeaways)$/.test(label)) {
-        currentSection = null;
-        continue;
-      }
-      currentSection = aliases.get(label) || null;
-      continue;
-    }
-    if (currentSection) sections.get(currentSection).push(line);
+  const topicKey = normalizedLessonText(topic);
+  const seenSentences = new Set();
+  for (const sentence of lessonSentences(prose)) {
+    const key = normalizedLessonText(sentence);
+    if (key === topicKey || seenSentences.has(key)) return true;
+    seenSentences.add(key);
   }
-
-  return REQUIRED_HEADINGS
-    .map((heading) => `${heading}\n${sections.get(heading).join('\n').trim()}`)
-    .join('\n\n');
-}
-
-function keepLesson(text) {
-  const cleaned = stripDiagrams(text);
-  const start = cleaned.indexOf('## What it is');
-  return (start >= 0 ? cleaned.slice(start) : cleaned).trim();
+  return false;
 }
 
 export function stripDiagrams(text) {
@@ -263,7 +280,7 @@ export function lessonMessages({ subject, topic, tier, angle }) {
   return [
     {
       role: 'system',
-      content: 'You are a patient teacher. Treat the topic as the learner’s full request, not a bag of keywords. Preserve and answer its requested action: explain how, compare, describe why, or solve. For “how it works,” teach the actual mechanism in order, not just its name or definition. Use only standard facts; leave out uncertain details. Do not invent numbers, dates, people, or formulas. Check each example result against its steps. Be concise and do not repeat an explanation. Do not add meta commentary about the lesson. No diagrams, tables, questions, preambles, or extra sections. Finish every sentence.',
+      content: 'You are a patient teacher. Treat the topic as the learner’s full request, not a bag of keywords. Preserve and answer its requested action: explain how, compare, describe why, or solve. For “how it works,” teach the actual mechanism in order, not just its name or definition. Use only standard facts; leave out uncertain details. Do not invent numbers, dates, people, or formulas. Check each example result against its steps. Every sentence must add new information; never repeat a sentence or the topic title as a bullet. Do not add meta commentary, diagrams, tables, preambles, placeholders, or extra sections. Finish every sentence.',
     },
     {
       role: 'user',
@@ -272,21 +289,21 @@ Topic: ${topic}
 Depth: ${depth.label}
 ${angleNote(angle)}
 
-Write ${depth.words}. Use exactly these four headings, in this order:
+Write ${depth.words}. Start with exactly these five headings, in this order:
 ## What it is
 ## Why it matters
 ## One example
 ## A common mistake
+## Check yourself
 
-Answer the exact request in "${topic}" rather than silently changing it to a broader topic. Under each heading, explain the idea in complete, connected sentences. Name the real parts, the action each part takes, and what changes as a result; do not rely on a slogan or analogy alone. Use only the four headings above, once each, with their exact spelling.
+Answer the exact request in "${topic}" rather than silently changing it to a broader topic. Under each heading, write 2–4 short, complete sentences, each no longer than 35 words. Every sentence must add a distinct fact or step. Name the real parts, the action each part takes, and what changes as a result; do not rely on a slogan or analogy alone. Use only the five headings above, once each, with their exact spelling. Do not use any heading deeper than ##, repeat the topic title as a sentence or bullet, or include placeholder text.
 
 If the request asks how something works, walk through its mechanism in order. In the example, show a concrete starting state and up to three important actions, including what each action returns or changes and why. Choose a tiny, direct example that demonstrates the mechanism; avoid extra algorithms or arithmetic that are not needed. Make the example detailed enough that a learner could trace it themselves. If the request asks to solve a problem, show the reasoning steps before the conclusion. The common-mistake section must correct one plausible misconception about the topic without adding unrelated uses. If you give a wrong-result example, reuse the exact setup above and state its correct result; do not introduce a second example.
 ${exampleGuidance}
 
-Do not ask a question. Stay on "${topic}". End the common-mistake section with a complete sentence.
+The Check yourself section must ask 2–4 concise questions answerable from this explanation. Stay on "${topic}". End every section with a complete sentence.
 
-If "${topic}" is a procedure a programmer writes, add this section after the mistake, with one fenced example of at most 12 lines that matches the note. Do not invent a library. If it is not a program, stop. Do not add code.
-## Code`,
+If "${topic}" is a procedure a programmer writes, optionally add a final ## Code section with one fenced example of at most 12 lines that matches the note. Do not invent a library. Otherwise omit the Code heading.`,
     },
   ];
 }
@@ -295,19 +312,20 @@ function repairMessages(topic, draft) {
   return [
     {
       role: 'system',
-      content: 'You are a careful teacher editing an incomplete study note. Preserve correct, relevant explanations, but fix factual errors and finish any cut-off idea. Do not copy a wrong example. Return only the finished lesson, with the exact requested headings and no commentary, diagrams, extra headings, or unfinished sentences.',
+      content: 'You are a careful teacher editing a study note. Preserve correct explanations, fix factual errors, and finish any cut-off idea. Every sentence must add new information. Do not copy a wrong example, repeat a sentence or the topic title, or include placeholder text. Return only the finished lesson with exactly the requested headings, no heading deeper than ##, no diagrams or commentary, and complete sentences.',
     },
     {
       role: 'user',
       content: `The learner asked: "${topic}"
 
-Rewrite this draft as a complete explanation that answers the learner's request. Keep the example small and factually consistent. Explain the steps and their result; do not use a game board, diagram, or long list of hypothetical moves. Use these four headings exactly once and in this order:
+Rewrite this draft as a complete explanation that answers the learner's request. Keep the example small and factually consistent. Explain the steps and their result; do not use a game board, diagram, or long list of hypothetical moves. Use these five headings exactly once and in this order:
 ## What it is
 ## Why it matters
 ## One example
 ## A common mistake
+## Check yourself
 
-Use at least two explanatory sentences under each heading. Finish every sentence. Do not add a question or any other heading.
+Write 2–4 short complete sentences under each heading, no longer than 35 words each. Check yourself contains 2–4 questions answerable from the explanation. Do not repeat sentences or the topic title, add any other heading, or use a heading deeper than ##.
 
 Draft to repair:
 ${draft}`,
@@ -332,15 +350,18 @@ export async function writeCheckedLesson({ subject, topic, tier, angle, signal }
         lessonMessages({ subject, topic, tier, angle }),
         options,
       );
-      let lesson = canonicalLesson(raw);
+      let lesson = stripDiagrams(raw);
 
       if (!lessonIsReady(topic, lesson)) {
+        if (mustTryNextProvider(topic, lesson)) {
+          throw new Error('Generated lesson contains a repeated sentence, title echo, placeholder, or unsupported heading.');
+        }
         const repaired = await collectFromProvider(
           provider,
           repairMessages(topic, raw),
           options,
         );
-        lesson = canonicalLesson(repaired);
+        lesson = stripDiagrams(repaired);
       }
 
       if (!lessonIsReady(topic, lesson)) {

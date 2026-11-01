@@ -280,7 +280,7 @@ export function lessonMessages({ subject, topic, tier, angle }) {
   return [
     {
       role: 'system',
-      content: 'You are a patient teacher. Treat the topic as the learner’s full request, not a bag of keywords. Preserve and answer its requested action: explain how, compare, describe why, or solve. For “how it works,” teach the actual mechanism in order, not just its name or definition. Use only standard facts; leave out uncertain details. Do not invent numbers, dates, people, or formulas. Check each example result against its steps. Every sentence must add new information; never repeat a sentence or the topic title as a bullet. Do not add meta commentary, diagrams, tables, preambles, placeholders, or extra sections. Finish every sentence.',
+      content: 'You are a patient teacher. Treat the topic as the learner’s full request, not a bag of keywords. Preserve the requested action: explain how, compare, describe why, or solve. For “how it works,” teach the actual mechanism in order, not just its name or definition. Use standard facts, avoid uncertain details, and check examples against their steps. Every sentence adds new information. Return only the lesson with no diagrams, tables, preamble, or meta commentary.',
     },
     {
       role: 'user',
@@ -296,36 +296,39 @@ Write ${depth.words}. Start with exactly these five headings, in this order:
 ## A common mistake
 ## Check yourself
 
-Answer the exact request in "${topic}" rather than silently changing it to a broader topic. Under each heading, write 2–4 short, complete sentences, each no longer than 35 words. Every sentence must add a distinct fact or step. Name the real parts, the action each part takes, and what changes as a result; do not rely on a slogan or analogy alone. Use only the five headings above, once each, with their exact spelling. Do not use any heading deeper than ##, repeat the topic title as a sentence or bullet, or include placeholder text.
+Answer the exact request in "${topic}" rather than changing it to a broader topic. Under each of the first four headings, write exactly two distinct, short, complete sentences, each no longer than 35 words, and put them on separate lines. Under Check yourself, write exactly two concise questions answerable from this explanation, one per line. The lesson must have ten prose sentences before optional code; do not leave a section with only one sentence.
 
-If the request asks how something works, walk through its mechanism in order. In the example, show a concrete starting state and up to three important actions, including what each action returns or changes and why. Choose a tiny, direct example that demonstrates the mechanism; avoid extra algorithms or arithmetic that are not needed. Make the example detailed enough that a learner could trace it themselves. If the request asks to solve a problem, show the reasoning steps before the conclusion. The common-mistake section must correct one plausible misconception about the topic without adding unrelated uses. If you give a wrong-result example, reuse the exact setup above and state its correct result; do not introduce a second example.
+Name the real parts, the action each part takes, and what changes as a result; do not rely on a slogan or analogy alone. Use only the five headings above, once each, with their exact spelling. Do not use any heading deeper than ##, repeat a sentence or the topic title as a sentence or bullet, or include placeholder text.
+
+If the request asks how something works, walk through its mechanism in order. In the example, show a concrete starting state and up to three important actions, including what each action returns or changes and why. Choose a tiny, direct example that demonstrates the mechanism; avoid extra algorithms or arithmetic that are not needed. If the request asks to solve a problem, show the reasoning steps before the conclusion. The common-mistake section must correct one plausible misconception about the topic without adding unrelated uses. If you give a wrong-result example, reuse the exact setup above and state its correct result; do not introduce a second example.
 ${exampleGuidance}
 
-The Check yourself section must ask 2–4 concise questions answerable from this explanation. Stay on "${topic}". End every section with a complete sentence.
+Stay on "${topic}". End every sentence and section completely.
 
-If "${topic}" is a procedure a programmer writes, optionally add a final ## Code section with one fenced example of at most 12 lines that matches the note. Do not invent a library. Otherwise omit the Code heading.`,
+Only when "${topic}" is a procedure a programmer writes, add a final ## Code section with one fenced example of at most 12 lines that matches the note. Do not invent a library. Otherwise omit the Code heading. Every heading line must start with exactly two # characters; a ### heading is invalid.`,
     },
   ];
 }
 
-function repairMessages(topic, draft) {
+function repairMessages(topic, draft, tier) {
+  const depth = DEPTH[tier] || DEPTH.tier3;
   return [
     {
       role: 'system',
-      content: 'You are a careful teacher editing a study note. Preserve correct explanations, fix factual errors, and finish any cut-off idea. Every sentence must add new information. Do not copy a wrong example, repeat a sentence or the topic title, or include placeholder text. Return only the finished lesson with exactly the requested headings, no heading deeper than ##, no diagrams or commentary, and complete sentences.',
+      content: 'You are a careful teacher. Discard the draft structure and repeated text; rewrite the lesson from scratch in the requested format. Do not quote the draft, answer its check questions, or add any material after the lesson.',
     },
     {
       role: 'user',
       content: `The learner asked: "${topic}"
 
-Rewrite this draft as a complete explanation that answers the learner's request. Keep the example small and factually consistent. Explain the steps and their result; do not use a game board, diagram, or long list of hypothetical moves. Use these five headings exactly once and in this order:
+Rewrite this draft from scratch to answer the learner's exact request. Treat it only as a source of facts, not as a format to copy. Keep one small, factually consistent example. Use exactly these five headings once, in this order:
 ## What it is
 ## Why it matters
 ## One example
 ## A common mistake
 ## Check yourself
 
-Write 2–4 short complete sentences under each heading, no longer than 35 words each. Check yourself contains 2–4 questions answerable from the explanation. Do not repeat sentences or the topic title, add any other heading, or use a heading deeper than ##.
+Write exactly two distinct complete sentences under each of the first four headings, each no longer than 35 words and on its own line. Write exactly two short answerable questions under Check yourself, one per line. Do not leave a section with only one sentence, repeat sentences or the topic title, add any other heading, use a heading deeper than ##, or write answers after the questions.
 
 Draft to repair:
 ${draft}`,
@@ -358,7 +361,7 @@ export async function writeCheckedLesson({ subject, topic, tier, angle, signal }
         }
         const repaired = await collectFromProvider(
           provider,
-          repairMessages(topic, raw),
+          repairMessages(topic, raw, tier),
           options,
         );
         lesson = stripDiagrams(repaired);
@@ -397,7 +400,13 @@ async function* streamProviderChat(provider, messages, { numPredict = 420, signa
       model: provider.model,
       stream: true,
       keep_alive: '30m',
-      options: { temperature: 0.2, num_predict: numPredict, num_ctx: 2048 },
+      options: {
+        temperature: 0.2,
+        repeat_penalty: 1.15,
+        repeat_last_n: 128,
+        num_predict: numPredict,
+        num_ctx: 2048,
+      },
       messages,
     }
     : {

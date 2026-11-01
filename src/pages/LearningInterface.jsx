@@ -865,9 +865,8 @@ export default function LearningInterface() {
         </div>
 
         {/* ─── RIGHT: Cockpit Sidebar ─── */}
-        {!distractionFree && (
-          <div style={{
-            display: 'flex', flexDirection: 'column', gap: 16,
+        <div className={`cockpit-sidebar${distractionFree ? ' cockpit-sidebar-hidden' : ''}`} style={{
+            flexDirection: 'column', gap: 16,
             position: 'sticky', top: 84, alignSelf: 'start',
             maxHeight: 'calc(100vh - 100px)', overflowY: 'auto',
             scrollbarWidth: 'thin', scrollbarColor: 'rgba(99,102,241,0.3) transparent',
@@ -926,7 +925,6 @@ export default function LearningInterface() {
             </div>
 
           </div>
-        )}
       </div>
     </div>
   );

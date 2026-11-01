@@ -40,7 +40,9 @@ export default function SessionResults() {
   const totalSeconds = navState.totalSeconds !== undefined ? navState.totalSeconds : (stored.totalSeconds || 120);
   const avgLoad = navState.avgLoad !== undefined ? navState.avgLoad : (stored.avgLoad || 52);
   const topicAssessments = navState.topicAssessments || stored.topicAssessments || {};
-  const avgQuizScore = navState.avgQuizScore !== undefined ? navState.avgQuizScore : (stored.avgQuizScore || 85);
+  const avgQuizScore = navState.avgQuizScore !== undefined
+    ? navState.avgQuizScore
+    : stored.avgQuizScore !== undefined ? stored.avgQuizScore : null;
 
   const canvasRef = useRef(null);
 
@@ -377,11 +379,9 @@ export default function SessionResults() {
                 </div>
               </div>
 
-              {avgQuizScore !== null && (
-                <span className="badge badge-emerald" style={{ fontSize: 12 }}>
-                  {avgQuizScore}% Overall Mastery
-                </span>
-              )}
+              <span className={`badge ${avgQuizScore === null ? 'badge-indigo' : 'badge-emerald'}`} style={{ fontSize: 12 }}>
+                {avgQuizScore === null ? 'No quiz taken' : `${avgQuizScore}% Overall Mastery`}
+              </span>
             </div>
 
             {Object.keys(topicAssessments).length > 0 ? (
@@ -425,7 +425,7 @@ export default function SessionResults() {
               </div>
             ) : (
               <div style={{ textAlign: 'center', padding: '18px 0', color: 'var(--text-muted)', fontSize: 13 }}>
-                No active recall assessments submitted for this session. Complete the end-of-topic mastery checks to record evaluated scores.
+                No quiz taken for this session.
               </div>
             )}
           </div>

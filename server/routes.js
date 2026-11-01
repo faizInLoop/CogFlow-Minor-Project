@@ -350,7 +350,10 @@ async function saveSession(req, res, next) {
     const adaptationLog = Array.isArray(body.adaptation_log) ? body.adaptation_log.slice(0, 200) : [];
     const finalTier = TIERS.has(body.final_tier) ? body.final_tier : 'tier3';
     const initialTier = TIERS.has(body.initial_tier) ? body.initial_tier : 'tier3';
-    const quizScore = Number(body.quiz_score) || 0;
+    const parsedQuizScore = body.quiz_score === null || body.quiz_score === undefined || body.quiz_score === ''
+      ? null
+      : Number(body.quiz_score);
+    const quizScore = Number.isFinite(parsedQuizScore) ? parsedQuizScore : null;
 
     const session = await LearningSession.create({
       id: id('ses'),
@@ -372,16 +375,17 @@ async function saveSession(req, res, next) {
 
     for (const topic of topics) {
       const existing = await TopicProgress.findOne({ user_id: userId, subject, topic_name: topic });
-      const incomingMastery = quizScore > 0 ? quizScore : (finalTier === 'tier5' ? 90 : finalTier === 'tier1' ? 60 : 75);
       if (existing) {
         existing.times_reviewed += 1;
         existing.last_reviewed = new Date();
         if (TIER_RANK[finalTier] > TIER_RANK[existing.highest_tier_reached]) {
           existing.highest_tier_reached = finalTier;
         }
-        existing.mastery_score = Math.min(100, quizScore > 0
-          ? (existing.mastery_score * 0.4) + (quizScore * 0.6)
-          : existing.mastery_score + 8);
+        if (quizScore !== null) {
+          existing.mastery_score = existing.mastery_score === null || existing.mastery_score === undefined
+            ? quizScore
+            : Math.min(100, (existing.mastery_score * 0.4) + (quizScore * 0.6));
+        }
         await existing.save();
       } else {
         await TopicProgress.create({
@@ -391,7 +395,7 @@ async function saveSession(req, res, next) {
           highest_tier_reached: finalTier,
           times_reviewed: 1,
           last_reviewed: new Date(),
-          mastery_score: incomingMastery,
+          mastery_score: quizScore,
         });
       }
     }

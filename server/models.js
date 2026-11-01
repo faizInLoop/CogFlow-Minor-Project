@@ -44,7 +44,7 @@ const sessionSchema = new mongoose.Schema({
   topics: { type: [String], default: [] },
   adaptation_log: { type: Array, default: [] },
   assessment_results: { type: Array, default: [] },
-  quiz_score: { type: Number, default: 0 },
+  quiz_score: { type: Number, default: null },
 }, { versionKey: false });
 
 sessionSchema.methods.toClient = function toClient() {
@@ -75,7 +75,7 @@ const progressSchema = new mongoose.Schema({
   highest_tier_reached: { type: String, default: 'tier3' },
   times_reviewed: { type: Number, default: 1 },
   last_reviewed: { type: Date, default: Date.now },
-  mastery_score: { type: Number, default: 70 },
+  mastery_score: { type: Number, default: null },
 }, { versionKey: false });
 
 progressSchema.methods.toClient = function toClient() {
@@ -87,7 +87,9 @@ progressSchema.methods.toClient = function toClient() {
     highest_tier_reached: this.highest_tier_reached,
     times_reviewed: this.times_reviewed,
     last_reviewed: this.last_reviewed,
-    mastery_score: Math.round(this.mastery_score * 10) / 10,
+    mastery_score: this.mastery_score === null || this.mastery_score === undefined
+      ? null
+      : Math.round(this.mastery_score * 10) / 10,
   };
 };
 

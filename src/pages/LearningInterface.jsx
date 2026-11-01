@@ -269,7 +269,7 @@ export default function LearningInterface() {
   const [distractionFree,    setDistractionFree]    = useState(false);
   const [activeOverrideText, setActiveOverrideText] = useState(null);
   const [contentSource,      setContentSource]      = useState(null);
-  const [topicAssessments] = useState({});
+  const topicAssessments = {};
   const [isSynthesizing,     setIsSynthesizing]     = useState(false);
   const [dynamicContent,     setDynamicContent]     = useState(null);
   const [lessonProvider,     setLessonProvider]     = useState('');
@@ -483,8 +483,11 @@ export default function LearningInterface() {
       : cogState.load;
 
     const assessmentsList = Object.values(topicAssessments);
-    const avgQuizScore = assessmentsList.length > 0
-      ? Math.round(assessmentsList.reduce((acc, a) => acc + (a.totalScore || 75), 0) / assessmentsList.length)
+    const assessmentScores = assessmentsList
+      .map((assessment) => assessment.totalScore)
+      .filter(Number.isFinite);
+    const avgQuizScore = assessmentScores.length > 0
+      ? Math.round(assessmentScores.reduce((total, score) => total + score, 0) / assessmentScores.length)
       : null;
 
     saveSession({
@@ -497,7 +500,7 @@ export default function LearningInterface() {
       topics: topicNames,
       adaptation_log: adaptationLog,
       assessment_results: assessmentsList,
-      quiz_score: avgQuizScore || 0,
+      quiz_score: avgQuizScore,
     }).catch(err => console.warn('Could not auto-save session:', err));
 
     const resultsPayload = {

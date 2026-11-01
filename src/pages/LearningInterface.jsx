@@ -68,19 +68,24 @@ function useSignalMonitor(isActive, currentTier, faceActiveRef, readingRootRef) 
 
     // Batched single-tick telemetry update (runs once every 1000ms, eliminates UI stutter)
     const velTick = setInterval(() => {
+      const now = Date.now();
       let vel = 0;
+      mouseHistory.current = mouseHistory.current.filter((point) => point.t >= now - 1500);
       if (mouseHistory.current.length >= 2) {
         const a = mouseHistory.current[0];
         const b = mouseHistory.current[mouseHistory.current.length - 1];
-        const dt = (b.t - a.t) / 1000;
-        const dist = Math.sqrt((b.x - a.x) ** 2 + (b.y - a.y) ** 2);
-        vel = dt > 0 ? Math.min(100, dist / dt / 3) : 0;
+        if (now - b.t <= 1500) {
+          const dt = (b.t - a.t) / 1000;
+          const dist = Math.sqrt((b.x - a.x) ** 2 + (b.y - a.y) ** 2);
+          vel = dt > 0 ? Math.min(100, dist / dt / 3) : 0;
+        }
       }
 
       const scrollRate = Math.min(100, Math.round(scrollDeltaAcc.current * 0.15));
       scrollDeltaAcc.current = 0; // reset for next 1s interval
 
       let typingPace = 0;
+      keystrokeTs.current = keystrokeTs.current.filter((timestamp) => timestamp >= now - 1500);
       if (keystrokeTs.current.length > 1) {
         const gaps = keystrokeTs.current.slice(1).map((t, i) => t - keystrokeTs.current[i]);
         const avg = gaps.reduce((a, b) => a + b, 0) / gaps.length;

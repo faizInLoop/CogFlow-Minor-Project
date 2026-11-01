@@ -40,8 +40,25 @@ function useSignalMonitor(isActive, currentTier, currentTopic, faceActiveRef, re
   const sectionRevisits = useRef(0);
   const observeSince   = useRef(0);
   const dismissedAt   = useRef(0);
+  const suggestionRef = useRef(null);
   const currentTierRef = useRef(currentTier);
   currentTierRef.current = currentTier;
+
+  const resetObservationWindow = useCallback(() => {
+    observeSince.current = Date.now();
+  }, []);
+
+  const requestSuggestion = useCallback((kind) => {
+    const tierIndex = TIERS.indexOf(currentTierRef.current);
+    if (suggestionRef.current || Date.now() - dismissedAt.current < 5 * 60 * 1000) return false;
+    if (kind === 'simpler' && tierIndex <= 0) return false;
+    if (kind === 'harder' && tierIndex >= TIERS.length - 1) return false;
+    if (!['simpler', 'harder'].includes(kind)) return false;
+    suggestionRef.current = kind;
+    setSuggestion(kind);
+    resetObservationWindow();
+    return true;
+  }, [resetObservationWindow]);
 
   useEffect(() => {
     if (!isActive) return;
@@ -121,7 +138,7 @@ function useSignalMonitor(isActive, currentTier, currentTopic, faceActiveRef, re
     const classifyTick = setInterval(() => {
       const elapsedSinceChange = (Date.now() - (observeSince.current || Date.now())) / 1000;
       if (elapsedSinceChange < 30) return;
-      if (Date.now() - dismissedAt.current < 45000) return;
+      if (Date.now() - dismissedAt.current < 5 * 60 * 1000) return;
 
       if (faceActiveRef?.current) return;
 
@@ -132,7 +149,7 @@ function useSignalMonitor(isActive, currentTier, currentTopic, faceActiveRef, re
       const tierIdx = TIERS.indexOf(tier);
 
       if (hasRepeatedSectionRevisits && tierIdx > 0) {
-        setSuggestion('simpler');
+        requestSuggestion('simpler');
       }
     }, 30000);
 
@@ -146,24 +163,22 @@ function useSignalMonitor(isActive, currentTier, currentTopic, faceActiveRef, re
       clearInterval(velTick);
       clearInterval(classifyTick);
     };
-  }, [isActive, currentTier, currentTopic]);
-
-  const resetObservationWindow = useCallback(() => {
-    observeSince.current = Date.now();
-  }, []);
+  }, [isActive, currentTier, currentTopic, requestSuggestion]);
 
   const dismissSuggestion = useCallback(() => {
+    suggestionRef.current = null;
     setSuggestion(null);
     dismissedAt.current = Date.now();
     resetObservationWindow();
   }, [resetObservationWindow]);
 
   const clearSuggestion = useCallback(() => {
+    suggestionRef.current = null;
     setSuggestion(null);
     resetObservationWindow();
   }, [resetObservationWindow]);
 
-  return { signals, cogLoad, setCogLoad, suggestion, setSuggestion, dismissSuggestion, clearSuggestion };
+  return { signals, cogLoad, setCogLoad, suggestion, requestSuggestion, dismissSuggestion, clearSuggestion };
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -232,7 +247,7 @@ export default function LearningInterface() {
 
   const faceActiveRef = useRef(false);
   const currentTopic = topicNames[currentTopicIndex] || topicNames[0] || 'Core Principles';
-  const { signals, cogLoad, setCogLoad, suggestion, setSuggestion, dismissSuggestion, clearSuggestion } = useSignalMonitor(isActive, currentTier, currentTopic, faceActiveRef, contentTopRef);
+  const { signals, cogLoad, setCogLoad, suggestion, requestSuggestion, dismissSuggestion, clearSuggestion } = useSignalMonitor(isActive, currentTier, currentTopic, faceActiveRef, contentTopRef);
 
   const currentTierMeta = TIER_META[currentTier];
 
@@ -871,7 +886,7 @@ export default function LearningInterface() {
             <div style={{ flexShrink: 0 }}>
               <WebcamMonitor
                 onCognitiveLoadUpdate={setCogLoad}
-                onTriggerSuggestion={setSuggestion}
+                onTriggerSuggestion={requestSuggestion}
                 onFaceActive={(active) => { faceActiveRef.current = active; }}
               />
             </div>

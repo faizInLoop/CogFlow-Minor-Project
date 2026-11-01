@@ -118,11 +118,11 @@ export default function Navbar({ currentStep = 0, session = null }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{
                 width: 7, height: 7, borderRadius: '50%',
-                background: session.state === 'flow' ? '#10b981' : session.state === 'overload' ? '#f43f5e' : '#f59e0b',
-                boxShadow: `0 0 8px ${session.state === 'flow' ? '#10b981' : session.state === 'overload' ? '#f43f5e' : '#f59e0b'}`,
+                background: session.state === 'flow' ? '#10b981' : session.state === 'overload' ? '#f43f5e' : session.state === 'boredom' ? '#f59e0b' : '#94a3b8',
+                boxShadow: `0 0 8px ${session.state === 'flow' ? '#10b981' : session.state === 'overload' ? '#f43f5e' : session.state === 'boredom' ? '#f59e0b' : '#94a3b8'}`,
               }} />
               <span style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-primary)' }}>
-                {session.state}
+                {session.stateLabel || session.state}
               </span>
             </div>
             <span style={{ width: 1, height: 12, background: 'var(--border)' }} />

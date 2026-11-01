@@ -24,12 +24,35 @@ const TIER_META = {
   tier5: { key: '3', label: 'Expert',     short: 'S-Tier Staff',       color: '#fbbf24', bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.3)', badge: 'badge-amber'   },
 };
 
+const STATE_NAMES = {
+  flow: 'Flow',
+  overload: 'Overload',
+  boredom: 'Boredom',
+  unknown: 'Unknown',
+};
+const NEUTRAL_PROBABILITIES = { flow: 1 / 3, overload: 1 / 3, boredom: 1 / 3 };
+
+function behaviorCogState(sectionRevisits) {
+  const overload = sectionRevisits >= 3;
+  return {
+    state: overload ? 'overload' : 'unknown',
+    confidence: overload ? 0.55 : 0.2,
+    source: 'behaviour',
+    load: overload ? 75 : 50,
+    probabilities: overload
+      ? { flow: 0.2, overload: 0.6, boredom: 0.2 }
+      : NEUTRAL_PROBABILITIES,
+    sustainedState: overload ? 'overload' : 'unknown',
+    sustainedSeconds: 0,
+    windowCount: 0,
+  };
+}
+
 // ─────────────────────────────────────────────────────────────
 // Real-time interaction telemetry monitor
 // ─────────────────────────────────────────────────────────────
-function useSignalMonitor(isActive, currentTier, currentTopic, faceActiveRef, readingRootRef) {
+function useSignalMonitor(isActive, currentTier, currentTopic, faceActiveRef, readingRootRef, cogStateRef, onCogStateUpdate) {
   const [signals, setSignals]         = useState({ mouseVelocity: 0, scrollRate: 0, typingPace: 0 });
-  const [cogLoad, setCogLoad]         = useState(50);    // 0-100, for the gauge
   const [suggestion, setSuggestion]   = useState(null);  // 'simpler' | 'harder' | null
   const mouseHistory   = useRef([]);
   const lastScrollY    = useRef(typeof window !== 'undefined' ? window.scrollY : 0);
@@ -41,8 +64,12 @@ function useSignalMonitor(isActive, currentTier, currentTopic, faceActiveRef, re
   const observeSince   = useRef(0);
   const dismissedAt   = useRef(0);
   const suggestionRef = useRef(null);
+  const onCogStateUpdateRef = useRef(onCogStateUpdate);
   const currentTierRef = useRef(currentTier);
   currentTierRef.current = currentTier;
+  useEffect(() => {
+    onCogStateUpdateRef.current = onCogStateUpdate;
+  }, [onCogStateUpdate]);
 
   const resetObservationWindow = useCallback(() => {
     observeSince.current = Date.now();
@@ -50,15 +77,20 @@ function useSignalMonitor(isActive, currentTier, currentTopic, faceActiveRef, re
 
   const requestSuggestion = useCallback((kind) => {
     const tierIndex = TIERS.indexOf(currentTierRef.current);
+    const state = cogStateRef.current;
     if (suggestionRef.current || Date.now() - dismissedAt.current < 5 * 60 * 1000) return false;
     if (kind === 'simpler' && tierIndex <= 0) return false;
     if (kind === 'harder' && tierIndex >= TIERS.length - 1) return false;
     if (!['simpler', 'harder'].includes(kind)) return false;
+    if (kind === 'simpler' && state.state !== 'overload') return false;
+    if (kind === 'harder' && state.state !== 'boredom') return false;
+    if (state.source === 'camera' && state.sustainedSeconds < 30) return false;
+    if (!['camera', 'behaviour'].includes(state.source)) return false;
     suggestionRef.current = kind;
     setSuggestion(kind);
     resetObservationWindow();
     return true;
-  }, [resetObservationWindow]);
+  }, [cogStateRef, resetObservationWindow]);
 
   useEffect(() => {
     if (!isActive) return;
@@ -133,6 +165,10 @@ function useSignalMonitor(isActive, currentTier, currentTopic, faceActiveRef, re
         activeSection.current = section;
       }
 
+      if (!faceActiveRef?.current) {
+        onCogStateUpdateRef.current?.(behaviorCogState(sectionRevisits.current));
+      }
+
     }, 1000);
 
     const classifyTick = setInterval(() => {
@@ -143,7 +179,6 @@ function useSignalMonitor(isActive, currentTier, currentTopic, faceActiveRef, re
       if (faceActiveRef?.current) return;
 
       const hasRepeatedSectionRevisits = sectionRevisits.current >= 3;
-      setCogLoad(hasRepeatedSectionRevisits ? 75 : 50);
 
       const tier = currentTierRef.current;
       const tierIdx = TIERS.indexOf(tier);
@@ -163,7 +198,7 @@ function useSignalMonitor(isActive, currentTier, currentTopic, faceActiveRef, re
       clearInterval(velTick);
       clearInterval(classifyTick);
     };
-  }, [isActive, currentTier, currentTopic, requestSuggestion]);
+  }, [isActive, currentTier, currentTopic, faceActiveRef, onCogStateUpdateRef, readingRootRef, requestSuggestion]);
 
   const dismissSuggestion = useCallback(() => {
     suggestionRef.current = null;
@@ -178,7 +213,7 @@ function useSignalMonitor(isActive, currentTier, currentTopic, faceActiveRef, re
     resetObservationWindow();
   }, [resetObservationWindow]);
 
-  return { signals, cogLoad, setCogLoad, suggestion, requestSuggestion, dismissSuggestion, clearSuggestion };
+  return { signals, suggestion, requestSuggestion, dismissSuggestion, clearSuggestion };
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -246,8 +281,31 @@ export default function LearningInterface() {
   const tierChangeTimeout = useRef(null);
 
   const faceActiveRef = useRef(false);
+  const [cogState, setCogState] = useState(() => ({
+    state: 'unknown',
+    confidence: 0,
+    source: 'none',
+    load: 50,
+    probabilities: NEUTRAL_PROBABILITIES,
+    sustainedState: 'unknown',
+    sustainedSeconds: 0,
+    windowCount: 0,
+  }));
+  const cogStateRef = useRef(cogState);
+  const updateCogState = useCallback((nextState) => {
+    cogStateRef.current = nextState;
+    setCogState(nextState);
+  }, []);
+  const handleFaceActive = useCallback((active) => {
+    faceActiveRef.current = active;
+    if (!active && cogStateRef.current.source === 'camera') {
+      updateCogState(behaviorCogState(0));
+    }
+  }, [updateCogState]);
   const currentTopic = topicNames[currentTopicIndex] || topicNames[0] || 'Core Principles';
-  const { signals, cogLoad, setCogLoad, suggestion, requestSuggestion, dismissSuggestion, clearSuggestion } = useSignalMonitor(isActive, currentTier, currentTopic, faceActiveRef, contentTopRef);
+  const { signals, suggestion, requestSuggestion, dismissSuggestion, clearSuggestion } = useSignalMonitor(
+    isActive, currentTier, currentTopic, faceActiveRef, contentTopRef, cogStateRef, updateCogState,
+  );
 
   const currentTierMeta = TIER_META[currentTier];
 
@@ -281,8 +339,8 @@ export default function LearningInterface() {
   // Track load history for results chart
   useEffect(() => {
     if (!isActive) return;
-    setLoadHistory(prev => [...prev.slice(-120), { t: elapsedRef.current, load: cogLoad }]);
-  }, [cogLoad, isActive]);
+    setLoadHistory(prev => [...prev.slice(-120), { t: elapsedRef.current, load: cogState.load }]);
+  }, [cogState.load, isActive]);
 
   // Reset override text on topic navigation
   useEffect(() => {
@@ -422,7 +480,7 @@ export default function LearningInterface() {
     setIsActive(false);
     const avgLoad = loadHistory.length > 0
       ? Math.round(loadHistory.reduce((a, b) => a + b.load, 0) / loadHistory.length)
-      : cogLoad;
+      : cogState.load;
 
     const assessmentsList = Object.values(topicAssessments);
     const avgQuizScore = assessmentsList.length > 0
@@ -476,7 +534,7 @@ export default function LearningInterface() {
       <div className="glow-orb glow-orb-2" />
 
       {/* Top Cyber Header */}
-      <Navbar currentStep={4} session={{ time: formatTime(elapsedSeconds), state: cogLoad < 35 ? 'bored' : cogLoad > 70 ? 'overload' : 'flow' }} />
+      <Navbar currentStep={4} session={{ time: formatTime(elapsedSeconds), state: cogState.state, stateLabel: STATE_NAMES[cogState.state] }} />
 
       {/* ── AI Suggestion Toast (Glassmorphic Slide-in) ── */}
       {suggestion && (
@@ -876,17 +934,19 @@ export default function LearningInterface() {
             {/* Cognitive Load Gauge */}
             <div style={{ flexShrink: 0 }}>
               <CognitiveLoadGauge
-                state={cogLoad < 35 ? 'bored' : cogLoad > 70 ? 'overload' : 'flow'}
-                load={cogLoad}
+                state={cogState.state}
+                load={cogState.load}
+                source={cogState.source}
               />
             </div>
 
             {/* Embedded Real-Time Webcam Facial Monitor */}
             <div style={{ flexShrink: 0 }}>
               <WebcamMonitor
-                onCognitiveLoadUpdate={setCogLoad}
+                cogState={cogState}
+                onStateUpdate={updateCogState}
                 onTriggerSuggestion={requestSuggestion}
-                onFaceActive={(active) => { faceActiveRef.current = active; }}
+                onFaceActive={handleFaceActive}
               />
             </div>
 

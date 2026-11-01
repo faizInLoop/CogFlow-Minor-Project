@@ -28,8 +28,11 @@ export default function WebcamMonitor({ cogState, onStateUpdate, onCognitiveLoad
   const intervalRef = useRef(null);
 
   // Sustained tracking refs to avoid stale closures
-  const sustainedStateRef = useRef('Flow');
+  const sustainedStateRef = useRef('unknown');
   const sustainedSecsRef = useRef(0);
+  const displayedStateRef = useRef('unknown');
+  const candidateStateRef = useRef(null);
+  const candidateSinceRef = useRef(0);
 
   // Store parent callbacks in refs so interval does NOT restart on parent re-renders
   const onCognitiveLoadUpdateRef = useRef(onCognitiveLoadUpdate);
@@ -98,6 +101,9 @@ export default function WebcamMonitor({ cogState, onStateUpdate, onCognitiveLoad
       setWindowCount(0);
       sustainedStateRef.current = 'unknown';
       sustainedSecsRef.current = 0;
+      displayedStateRef.current = 'unknown';
+      candidateStateRef.current = null;
+      candidateSinceRef.current = 0;
       setSustainedSeconds(0);
       setSustainedState('unknown');
       setDetectedState('Unknown');
@@ -141,6 +147,9 @@ export default function WebcamMonitor({ cogState, onStateUpdate, onCognitiveLoad
     setSustainedState('unknown');
     setSustainedSeconds(0);
     sustainedSecsRef.current = 0;
+    displayedStateRef.current = 'unknown';
+    candidateStateRef.current = null;
+    candidateSinceRef.current = 0;
     onFaceActiveRef.current?.(false);
   }, []);
 
@@ -188,6 +197,9 @@ export default function WebcamMonitor({ cogState, onStateUpdate, onCognitiveLoad
         if (!vector) {
           onFaceActiveRef.current?.(false);
           setDetectedState('Unknown');
+          displayedStateRef.current = 'unknown';
+          candidateStateRef.current = null;
+          candidateSinceRef.current = 0;
           setStateReason('Center your face in the camera. Video stays on this device.');
           return;
         }
@@ -217,6 +229,18 @@ export default function WebcamMonitor({ cogState, onStateUpdate, onCognitiveLoad
 
         const category = data.cognitive_state === 1 ? 'overload' : (data.cognitive_state === 2 ? 'boredom' : 'flow');
         setDetectedState(STATE_NAMES[category]);
+        const classifiedAt = performance.now();
+        if (category === displayedStateRef.current) {
+          candidateStateRef.current = null;
+          candidateSinceRef.current = 0;
+        } else if (candidateStateRef.current !== category) {
+          candidateStateRef.current = category;
+          candidateSinceRef.current = classifiedAt;
+        } else if (classifiedAt - candidateSinceRef.current >= 8000) {
+          displayedStateRef.current = category;
+          candidateStateRef.current = null;
+          candidateSinceRef.current = 0;
+        }
         if (category === sustainedStateRef.current) sustainedSecsRef.current += deltaSec;
         else {
           sustainedStateRef.current = category;
@@ -225,7 +249,7 @@ export default function WebcamMonitor({ cogState, onStateUpdate, onCognitiveLoad
         setSustainedState(category);
         setSustainedSeconds(Math.floor(sustainedSecsRef.current));
         onStateUpdateRef.current?.({
-          state: category,
+          state: displayedStateRef.current,
           confidence: data.confidence / 100,
           source: 'camera',
           load: data.cognitive_load,
@@ -234,6 +258,7 @@ export default function WebcamMonitor({ cogState, onStateUpdate, onCognitiveLoad
           sustainedSeconds: Math.floor(sustainedSecsRef.current),
           windowCount: frames.length,
         });
+        setStateReason(`Raw window: ${STATE_NAMES[category]}. ${data.reason}`);
         if (sustainedSecsRef.current >= 30 && category !== 'flow') {
           if (category === 'overload') onTriggerSuggestionRef.current?.('simpler');
           if (category === 'boredom') onTriggerSuggestionRef.current?.('harder');

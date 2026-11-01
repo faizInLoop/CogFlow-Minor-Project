@@ -549,7 +549,6 @@ export default function LearningInterface() {
 
   const goToTopic = (idx) => {
     setCurrentTopicIndex(idx);
-    setCurrentTier('tier3');
     contentTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     document.getElementById(`topic-tab-${idx}`)?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
   };

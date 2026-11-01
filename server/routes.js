@@ -49,9 +49,11 @@ router.get('/', (_req, res) => {
 
 router.get('/api/ai-status', async (_req, res) => {
   const ollama = await ollamaStatus();
+  const providers = ollama.providers || ['Ollama'];
   res.json({
-    status: ollama.online ? 'online' : 'offline',
-    primary_provider: 'ollama',
+    status: ollama.online ? 'online' : providers.length > 1 ? 'fallback_configured' : 'offline',
+    primary_provider: providers[0],
+    provider_chain: providers,
     model: ollama.model,
     model_installed: ollama.installed,
     face: 'browser',
@@ -119,13 +121,13 @@ router.post('/api/generate-content', async (req, res) => {
 
   const authored = authoredLesson(topic, tier);
   if (authored) {
-    send({ type: 'done', content: authored, content_source: 'course_notes', cached: true, topic, tier });
+    send({ type: 'done', content: authored, content_source: 'course_notes', provider: 'Course notes', cached: true, topic, tier });
     res.end();
     return;
   }
 
   if (saved && lessonIsReady(topic, saved)) {
-    send({ type: 'done', content: saved, content_source: 'ollama_qwen_dynamic', cached: true, topic, tier });
+    send({ type: 'done', content: saved, content_source: 'cached_checked_lesson', provider: 'Cache', cached: true, topic, tier });
     res.end();
     return;
   }
@@ -137,19 +139,36 @@ router.post('/api/generate-content', async (req, res) => {
   });
   try {
     send({ type: 'status', message: `Writing a note on ${topic}.` });
-    const content = await writeCheckedLesson({
+    const lesson = await writeCheckedLesson({
       subject,
       topic,
       tier,
       angle,
       signal: controller.signal,
     });
-    send({ type: 'done', content, content_source: 'ollama_qwen_dynamic', cached: false, topic, tier });
+    const contentSource = lesson.provider === 'Ollama'
+      ? 'ollama_qwen_dynamic'
+      : lesson.provider.startsWith('Groq')
+        ? 'groq_dynamic'
+        : lesson.provider === 'OpenRouter'
+          ? 'openrouter_dynamic'
+          : 'cached_checked_lesson';
+    send({
+      type: 'done',
+      content: lesson.content,
+      content_source: contentSource,
+      provider: lesson.provider,
+      cached: lesson.provider === 'Cache',
+      topic,
+      tier,
+    });
     res.end();
   } catch (error) {
     const message = controller.signal.aborted
       ? 'The lesson writer was stopped.'
-      : `The local model did not finish this lesson. Check that Ollama is running (${error.message || 'no response'}).`;
+      : ['LESSON_NOT_READY', 'AI_PROVIDERS_FAILED'].includes(error.code)
+        ? error.message
+        : `The local model could not finish this lesson. Check that Ollama is running (${error.message || 'no response'}).`;
     if (!res.headersSent) {
       res.status(503).json({ status: 'error', detail: message });
       return;

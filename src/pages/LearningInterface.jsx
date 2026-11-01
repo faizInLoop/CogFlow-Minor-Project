@@ -199,6 +199,9 @@ export default function LearningInterface() {
   const [topicAssessments] = useState({});
   const [isSynthesizing,     setIsSynthesizing]     = useState(false);
   const [dynamicContent,     setDynamicContent]     = useState(null);
+  const [lessonProvider,     setLessonProvider]     = useState('');
+  const [lessonError,        setLessonError]        = useState('');
+  const [lessonRetryKey,     setLessonRetryKey]     = useState(0);
   const [studyView,          setStudyView]          = useState('overview');
   const contentTopRef = useRef(null);
   const elapsedRef    = useRef(0);
@@ -253,11 +256,15 @@ export default function LearningInterface() {
     if (uploadedLesson) {
       setDynamicContent(uploadedLesson);
       setContentSource('uploaded_syllabus');
+      setLessonProvider('Your notes');
+      setLessonError('');
       setIsSynthesizing(false);
       return undefined;
     }
 
     setDynamicContent('');
+    setLessonProvider('');
+    setLessonError('');
     setContentSource('writing');
     setIsSynthesizing(true);
     const controller = new AbortController();
@@ -273,12 +280,16 @@ export default function LearningInterface() {
         });
         if (!isCancelled && data?.content) {
           setDynamicContent(data.content);
+          setLessonProvider(data.provider || '');
+          setLessonError('');
           setContentSource(data.content_source || 'ollama_qwen_dynamic');
         }
       } catch (err) {
         if (isCancelled || err?.name === 'AbortError') return;
         if (!isCancelled) {
-          setDynamicContent(`## Lesson not ready\n\n${err?.message || 'The local model did not answer.'}`);
+          setDynamicContent(null);
+          setLessonProvider('');
+          setLessonError(err?.message || 'The local model did not answer.');
           setContentSource('error');
         }
       } finally {
@@ -291,7 +302,7 @@ export default function LearningInterface() {
       isCancelled = true;
       controller.abort();
     };
-  }, [currentTopic, currentTier, subject, uploadedLesson]);
+  }, [currentTopic, currentTier, subject, uploadedLesson, lessonRetryKey]);
 
   // Change tier with a smooth fade + real-time adaptation
   const changeTier = useCallback((newTier, reason = 'manual') => {
@@ -689,6 +700,9 @@ export default function LearningInterface() {
                 customVersions={topicVersions[currentTopic]}
                 activeOverrideText={dynamicContent || activeOverrideText}
                 contentSource={contentSource}
+                contentProvider={lessonProvider}
+                lessonError={lessonError}
+                onRetryLesson={() => setLessonRetryKey((key) => key + 1)}
                 view={studyView}
               />
             </div>

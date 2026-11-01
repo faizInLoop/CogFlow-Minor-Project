@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useState } from 'react';
-import { Check, ChevronRight, Copy, Sparkles } from 'lucide-react';
+import { AlertCircle, Check, ChevronRight, Copy, RefreshCw, Sparkles } from 'lucide-react';
 import { codeForTopic, topicCanHaveCode } from '../data/topicCode';
 
 // ============================================================
@@ -556,6 +556,7 @@ function parseLessonPoints(content) {
         title: SECTION_LABEL[heading] || heading,
         pointer,
         detail,
+        sentences,
       };
     })
     .filter(Boolean);
@@ -666,32 +667,33 @@ function LessonPoints({ content, startClosed = false }) {
 }
 
 function Overview({ points }) {
-  const [lead, ...rest] = points;
   return (
-    <div>
-      <p style={{ margin: '0 0 18px', fontSize: 20, lineHeight: 1.45, fontWeight: 650, letterSpacing: '-0.02em' }}>
-        {lead.pointer}
-      </p>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {rest.map((point) => (
-          <div key={point.id} style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
-            <span style={{
-              flexShrink: 0,
-              width: 118,
-              paddingTop: 3,
-              fontSize: 10,
-              fontWeight: 800,
-              letterSpacing: '0.08em',
-              textTransform: 'uppercase',
-              color: '#a5b4fc',
-            }}
-            >
-              {point.title}
-            </span>
-            <span style={{ fontSize: 14.5, lineHeight: 1.6, color: 'var(--text-secondary)' }}>{point.pointer}</span>
-          </div>
-        ))}
-      </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {points.map((point, index) => (
+        <section key={point.id}>
+          <h2 style={{
+            margin: '0 0 8px',
+            color: index === 0 ? 'var(--text-primary)' : '#a5b4fc',
+            fontSize: index === 0 ? 20 : 11,
+            lineHeight: 1.45,
+            fontWeight: 800,
+            letterSpacing: index === 0 ? '-0.02em' : '0.08em',
+            textTransform: index === 0 ? 'none' : 'uppercase',
+          }}>
+            {index === 0 ? point.sentences[0] : point.title}
+          </h2>
+          {(index === 0 ? point.sentences.slice(1) : point.sentences).map((sentence) => (
+            <p key={sentence} style={{
+              margin: '0 0 8px',
+              fontSize: 15,
+              lineHeight: 1.75,
+              color: 'var(--text-secondary)',
+            }}>
+              {renderInline(sentence)}
+            </p>
+          ))}
+        </section>
+      ))}
     </div>
   );
 }
@@ -808,6 +810,9 @@ function ContentRenderer({
   customVersions = null,
   activeOverrideText = null,
   contentSource = null,
+  contentProvider = '',
+  lessonError = '',
+  onRetryLesson,
   view = 'overview',
 }) {
   const meta = TIER_META[tier] || TIER_META.tier3;
@@ -819,7 +824,13 @@ function ContentRenderer({
   const sourceLabel = contentSource === 'course_notes'
     ? 'Course notes'
     : contentSource === 'ollama_qwen_dynamic'
-    ? 'Checked lesson'
+      ? 'Checked lesson'
+      : contentSource === 'groq_dynamic'
+        ? `Checked lesson · ${contentProvider || 'Groq'}`
+        : contentSource === 'openrouter_dynamic'
+          ? 'Checked lesson · OpenRouter'
+          : contentSource === 'cached_checked_lesson'
+            ? 'Checked lesson · cached'
     : contentSource === 'uploaded_syllabus'
       ? 'From your notes'
       : contentSource === 'writing'
@@ -878,16 +889,54 @@ function ContentRenderer({
       </div>
 
       <div style={{ fontSize: 15, lineHeight: 1.75 }}>
-        {!rawContent && (
+        {lessonError && (
+          <div
+            role="alert"
+            style={{
+              padding: 20,
+              borderRadius: 14,
+              border: '1px solid rgba(248,113,113,0.28)',
+              background: 'rgba(248,113,113,0.06)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 9, color: '#fca5a5', fontWeight: 750 }}>
+              <AlertCircle size={18} />
+              <span>This lesson could not be prepared</span>
+            </div>
+            <p style={{ margin: '10px 0 16px', color: 'var(--text-secondary)', fontSize: 14 }}>
+              {lessonError}
+            </p>
+            <button
+              type="button"
+              onClick={onRetryLesson}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 7,
+                padding: '8px 13px',
+                border: '1px solid rgba(129,140,248,0.4)',
+                borderRadius: 9,
+                background: 'rgba(99,102,241,0.14)',
+                color: '#c7d2fe',
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              <RefreshCw size={14} />
+              Try again
+            </button>
+          </div>
+        )}
+        {!rawContent && !lessonError && (
           <p style={{ color: 'var(--text-secondary)' }}>
-            Writing the note for {topic}. Overview, Visual, Code, and Notes open when it is ready. A custom topic takes about a minute on this computer.
+            Writing a checked note for {topic}. Overview, Visual, Code, and Notes open when it is ready. The first note may take a little longer while the local model starts.
           </p>
         )}
-        {rawContent && points.length === 0 && formatContent(rawContent)}
-        {rawContent && points.length > 0 && view === 'overview' && <Overview points={points} />}
-        {rawContent && points.length > 0 && view === 'visual' && <LessonFlow points={points} />}
-        {rawContent && points.length > 0 && view === 'code' && <CodeView topic={topic} content={rawContent} />}
-        {rawContent && points.length > 0 && view === 'notes' && <LessonPoints content={rawContent} startClosed />}
+        {!lessonError && rawContent && points.length === 0 && formatContent(rawContent)}
+        {!lessonError && rawContent && points.length > 0 && view === 'overview' && <Overview points={points} />}
+        {!lessonError && rawContent && points.length > 0 && view === 'visual' && <LessonFlow points={points} />}
+        {!lessonError && rawContent && points.length > 0 && view === 'code' && <CodeView topic={topic} content={rawContent} />}
+        {!lessonError && rawContent && points.length > 0 && view === 'notes' && <LessonPoints content={rawContent} startClosed />}
       </div>
     </article>
   );

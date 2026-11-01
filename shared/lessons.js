@@ -18,6 +18,99 @@ function normalize(value) {
 
 const COURSES = [
   {
+    names: [
+      'minimax',
+      'minimax algorithm',
+      'what is minimax algorithm',
+      'what is the minimax algorithm',
+      'explain minimax algorithm',
+      'explain the minimax algorithm',
+      'minimax search',
+    ],
+    tier1: note(
+      'Minimax is a way to choose a move in a turn-based game. It assumes you choose the best move for yourself and your opponent chooses the best reply for them.',
+      'Thinking ahead helps a player avoid a move that looks good now but lets the opponent win next. Minimax models both players taking turns.',
+      'Suppose your move A leads to scores 3 or 5, depending on the opponent. Your opponent chooses 3. Move B leads to 2 or 9, so the opponent chooses 2. You choose A because 3 is better than 2.',
+      'Why do you compare the opponent’s best reply for each of your moves?',
+      'Assuming the opponent will choose the reply that helps you. Minimax assumes each player chooses the outcome best for their own side.'
+    ),
+    tier3: note(
+      'Minimax is a search method for turn-based, two-player games where one player’s gain is the other player’s loss. It builds a tree of possible moves and replies. At your turns, it chooses the child with the highest score; at the opponent’s turns, it assumes they choose the child with the lowest score. Scores at terminal positions describe outcomes from your perspective.',
+      'A move can look strong immediately but allow a reply that leads to a loss. Minimax accounts for the opponent’s response before choosing. Searching every possible continuation can be expensive, so practical game programs often limit search depth and use an evaluation function for positions that are not terminal.',
+      'Suppose the root is your turn and has two moves, A and B. After A, the opponent can force a score of either 3 or 5, so they choose 3. After B, they can force 2 or 9, so they choose 2. You compare those backed-up values and choose A, because 3 is better for you than 2. The opponent’s choices are minimized first; your choice then maximizes the result.',
+      'At an opponent node with child scores 4 and 7, which score is passed back to your turn, and why?',
+      'Minimax does not assume the opponent makes a random move or the move you hope for. It plans against the strongest available reply, then chooses the move with the best worst-case result.'
+    ),
+    tier5: note(
+      'Minimax is a recursive decision rule for deterministic, turn-based, adversarial games with a shared utility scale. A MAX node returns the largest value among its children; a MIN node returns the smallest. Terminal states receive utility values, and those values are propagated upward until the root selects its best move.',
+      'The recurrence makes the opponent part of the decision rather than treating a move as good in isolation. With branching factor b and search depth d, a plain search can examine O(b^d) positions. Alpha-beta pruning can skip branches that cannot change the final choice, while depth limits and evaluation functions estimate non-terminal positions.',
+      'At a MAX root, move A reaches a MIN node with terminal values 3 and 5, so A receives min(3, 5) = 3. Move B reaches a MIN node with values 2 and 9, so B receives min(2, 9) = 2. The root chooses A because max(3, 2) = 3. Each value is from MAX’s perspective, so MIN selects the lower value at its turn.',
+      'Why does MIN choose 2 from the values 2 and 9, even though 9 is a better score for MAX?',
+      'Treating every node as a maximizing node reverses the opponent’s incentives. Values stay from one player’s perspective, but MAX nodes take the maximum and MIN nodes take the minimum.'
+    ),
+  },
+  {
+    names: [
+      'how operating system works',
+      'how an operating system works',
+      'explain how operating system works',
+      'explain how an operating system works',
+      'operating system basics',
+    ],
+    tier1: note(
+      'An operating system, or OS, is the main software that lets apps use a computer. It shares the processor, memory, and devices between running apps.',
+      'Without an OS, each app would need its own way to control the keyboard, screen, storage, and processor. The OS provides common services and keeps apps from freely interfering with one another.',
+      'When you open a browser and a music player, both want processor time. The OS scheduler gives each a short turn. The OS also keeps their memory separate, so one app cannot normally overwrite the other app’s data.',
+      'What does the OS scheduler share between apps, and what does memory isolation protect?',
+      'An OS is not just the screen you click. The graphical interface is one way to interact with it; the kernel and system services do the work of managing resources.'
+    ),
+    tier3: note(
+      'An operating system (OS) manages the computer’s processor, memory, storage, and devices, and gives applications common services to use them. The kernel is the privileged core of the OS. It schedules processes, enforces memory boundaries, and coordinates access to hardware. A process is a running program with its own protected address space; a thread is a path of execution within a process. Applications request protected OS operations through system calls rather than directly changing hardware state.',
+      'Several parts cooperate to make the machine feel like a set of resources dedicated to each app. The scheduler shares processor time among runnable threads. Virtual memory gives processes separate address spaces and maps them to physical memory. The file system organizes stored data as named files and directories. Device drivers translate OS requests into operations a particular device understands. These mechanisms let many applications run while limiting accidental interference and checking access permissions.',
+      'Suppose a text editor saves a document while a music player is running. The editor asks to write file data with a system call. The kernel checks that the editor is allowed to write the destination, and the file system determines where the file’s data belongs. A storage driver sends the necessary commands to the disk, and the OS returns success or an error to the editor. During that work, the scheduler may give the music player a turn on the processor. Each application continues from its own execution state, while memory protection prevents one process from freely changing the other’s memory.',
+      'When an application saves a file, why does it ask the OS instead of directly controlling the disk?',
+      'The kernel is central, but an OS also includes services, drivers, and often a user interface. A driver helps communicate with a device; it is not the component that decides which application thread gets processor time. Also, the OS does not necessarily give each process separate physical memory chips: virtual address spaces are protected views that the system maps onto physical memory.'
+    ),
+    tier5: note(
+      'An operating system coordinates hardware and exposes controlled abstractions, such as processes, virtual memory, files, and device interfaces. The kernel runs with elevated privilege; ordinary applications run with restricted access.',
+      'This separation lets the OS multiplex hardware among programs while enforcing protection. A system call crosses from an application into a defined kernel interface, where the OS can validate the request before performing privileged work.',
+      'When an application reads a file, it issues a read request through the OS interface. The kernel checks the process and file permissions, consults file-system metadata, and asks the relevant driver to obtain data from storage. The data is copied or mapped into the process’s allowed memory, and the call returns a result. The application does not receive unrestricted access to the disk or another process’s address space.',
+      'Which checks happen before the OS returns file data to an application?',
+      'Virtual memory does not mean every process has its own physical RAM chips. Processes use separate virtual address spaces that the hardware and kernel map onto physical memory.'
+    ),
+  },
+  {
+    names: [
+      'stack data structure',
+      'stack operations',
+      'how stack works',
+      'how a stack works',
+      'explain how stack works',
+      'lifo principle',
+    ],
+    tier1: note(
+      'A stack holds items. You add an item with push and remove the top item with pop.',
+      'The last item you add is the first one you remove. This order is called Last In, First Out, or LIFO.',
+      'Start with []. Push 5 to get [5]. Push 10 to get [5, 10]. Pop returns 10 and leaves [5].',
+      'If you push A and then B, which item does pop return?',
+      'A stack is not first-in, first-out. Pop removes the newest item at the top, not the oldest item at the bottom.'
+    ),
+    tier3: note(
+      'A stack is a data structure where items are added and removed at one end, called the top. Push adds an item there; pop removes and returns the item there.',
+      'Because pop removes the newest item first, a stack is Last In, First Out (LIFO). This order is useful when work must be undone in reverse order. A program also uses a call stack to keep track of nested function calls so it can return to the caller.',
+      'Start with an empty stack: []. Push 5, so it becomes [5]. Push 10, so it becomes [5, 10], with 10 at the top. Pop returns 10 and leaves [5]. The next pop returns 5. Each pop removes the most recently pushed item that is still present.',
+      'After pushing A and then B, what does pop return, and what remains on the stack?',
+      'Confusing a stack with a queue. A queue removes the oldest item first; a stack removes the newest item first.'
+    ),
+    tier5: note(
+      'A stack is an abstract data type that exposes operations at one end, its top. Push adds an item to the top, and pop removes and returns the top item. Peek reads the top without removing it.',
+      'The operations enforce Last In, First Out (LIFO): the most recently pushed item still present is the next one popped. This makes stacks useful for nested work, such as remembering which function should resume after another function returns. The stack rule describes the order of access; it does not mean the whole program is stored as one item.',
+      'Begin with []. Push 5 to get [5]. Push 10 to get [5, 10], where 10 is the top. Pop returns 10 and leaves [5]. A second pop returns 5 and leaves []. The return value and the remaining stack follow directly from removing only the top item each time.',
+      'After pushing A, B, and C, what does the first pop return? What remains?',
+      'Treating a stack like a queue reverses the order. A queue removes the oldest item first; a stack removes the newest item still present.'
+    ),
+  },
+  {
     names: ['alphabet sounds and phonics adventures'],
     tier1: note(
       'A letter can stand for a sound. Phonics is the practice of saying the sound, then blending sounds into a word.',

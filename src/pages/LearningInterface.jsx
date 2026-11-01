@@ -27,7 +27,7 @@ const TIER_META = {
 // ─────────────────────────────────────────────────────────────
 // Real-time interaction telemetry monitor
 // ─────────────────────────────────────────────────────────────
-function useSignalMonitor(isActive, currentTier, faceActiveRef) {
+function useSignalMonitor(isActive, currentTier, faceActiveRef, readingRootRef) {
   const [signals, setSignals]         = useState({ mouseVelocity: 0, scrollRate: 0, typingPace: 0 });
   const [cogLoad, setCogLoad]         = useState(50);    // 0-100, for the gauge
   const [suggestion, setSuggestion]   = useState(null);  // 'simpler' | 'harder' | null
@@ -36,7 +36,9 @@ function useSignalMonitor(isActive, currentTier, faceActiveRef) {
   const lastScrollY    = useRef(typeof window !== 'undefined' ? window.scrollY : 0);
   const scrollDeltaAcc = useRef(0);
   const keystrokeTs    = useRef([]);
-  const signalBuffer   = useRef([]);
+  const visitedSections = useRef(new Set());
+  const activeSection = useRef(null);
+  const sectionRevisits = useRef(0);
   const observeSince   = useRef(Date.now());
   const currentTierRef = useRef(currentTier);
   currentTierRef.current = currentTier;
@@ -91,8 +93,17 @@ function useSignalMonitor(isActive, currentTier, faceActiveRef) {
         typingPace
       });
 
-      signalBuffer.current.push(vel);
-      if (signalBuffer.current.length > 60) signalBuffer.current.shift();
+      const headings = [...(readingRootRef.current?.querySelectorAll('h2, h3') || [])];
+      const visibleHeading = headings
+        .filter((heading) => heading.getBoundingClientRect().top <= window.innerHeight * 0.45)
+        .at(-1);
+      const section = visibleHeading?.textContent?.trim().toLowerCase();
+      if (section && section !== activeSection.current) {
+        if (visitedSections.current.has(section)) sectionRevisits.current += 1;
+        visitedSections.current.add(section);
+        activeSection.current = section;
+      }
+
     }, 1000);
 
     const classifyTick = setInterval(() => {
@@ -100,24 +111,15 @@ function useSignalMonitor(isActive, currentTier, faceActiveRef) {
       if (elapsedSinceChange < 30) return;
       if (dismissed) return;
 
-      const buf = signalBuffer.current;
-      if (buf.length === 0) return;
-      const avgVel = buf.reduce((a, b) => a + b, 0) / buf.length;
-
-      let load = 50;
-      if (avgVel > 55) load = Math.max(10, 50 - (avgVel - 55) * 0.8);
-      else if (avgVel < 15) load = Math.min(90, 50 + (15 - avgVel) * 2);
-      load = Math.round(load);
       if (faceActiveRef?.current) return;
 
-      setCogLoad(load);
+      const hasRepeatedSectionRevisits = sectionRevisits.current >= 3;
+      setCogLoad(hasRepeatedSectionRevisits ? 75 : 50);
 
       const tier = currentTierRef.current;
       const tierIdx = TIERS.indexOf(tier);
 
-      if (load < 32 && tierIdx < TIERS.length - 1) {
-        setSuggestion('harder');
-      } else if (load > 70 && tierIdx > 0) {
+      if (hasRepeatedSectionRevisits && tierIdx > 0) {
         setSuggestion('simpler');
       }
     }, 25000);
@@ -207,7 +209,7 @@ export default function LearningInterface() {
   const elapsedRef    = useRef(0);
 
   const faceActiveRef = useRef(false);
-  const { signals, cogLoad, setCogLoad, suggestion, setSuggestion, dismissSuggestion } = useSignalMonitor(isActive, currentTier, faceActiveRef);
+  const { signals, cogLoad, setCogLoad, suggestion, setSuggestion, dismissSuggestion } = useSignalMonitor(isActive, currentTier, faceActiveRef, contentTopRef);
 
   const currentTierMeta = TIER_META[currentTier];
   const currentTopic    = topicNames[currentTopicIndex] || topicNames[0] || 'Core Principles';

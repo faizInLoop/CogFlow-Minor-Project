@@ -519,6 +519,10 @@ function splitSentences(text) {
     .filter(Boolean);
 }
 
+function lessonTextKey(text) {
+  return text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+}
+
 const SECTION_LABEL = {
   'What it is': 'What it is',
   'Why it matters': 'Why it matters',
@@ -537,7 +541,7 @@ function shortPointer(sentence) {
   return { pointer, clipped: true };
 }
 
-function parseLessonPoints(content) {
+function parseLessonPoints(content, topic = '') {
   return String(content)
     .split(/\n(?=## )/)
     .map((chunk) => chunk.trim())
@@ -547,7 +551,27 @@ function parseLessonPoints(content) {
       if (!match) return null;
       const heading = match[1].trim();
       if (/check yourself|^code$/i.test(heading)) return null;
-      const sentences = splitSentences(match[2]);
+      const sectionKey = lessonTextKey(heading);
+      const topicKey = lessonTextKey(topic);
+      const body = match[2]
+        .split(/\r?\n/)
+        .map((line) => ({
+          isBullet: /^\s*[-*+]\s+/.test(line),
+          text: line.replace(/^\s*#{1,6}\s+/, '').replace(/^\s*[-*+]\s+/, '').trim(),
+        }))
+        .filter(({ isBullet, text }) => (
+          text && !(isBullet && [sectionKey, topicKey].includes(lessonTextKey(text)))
+        ))
+        .map(({ text }) => text)
+        .join(' ');
+      const seen = new Set();
+      const sentences = splitSentences(body).filter((sentence, index) => {
+        const key = lessonTextKey(sentence);
+        if (index === 0 && [sectionKey, topicKey].includes(key)) return false;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
       if (sentences.length === 0) return null;
       const { pointer, clipped } = shortPointer(sentences[0]);
       const detail = clipped ? sentences : sentences.slice(1);
@@ -562,8 +586,8 @@ function parseLessonPoints(content) {
     .filter(Boolean);
 }
 
-function LessonPoints({ content, startClosed = false }) {
-  const points = useMemo(() => parseLessonPoints(content), [content]);
+function LessonPoints({ content, topic, startClosed = false }) {
+  const points = useMemo(() => parseLessonPoints(content, topic), [content, topic]);
   const [openIds, setOpenIds] = useState(() => new Set());
 
   useEffect(() => {
@@ -818,8 +842,8 @@ function ContentRenderer({
   const meta = TIER_META[tier] || TIER_META.tier3;
   const rawContent = activeOverrideText || (customVersions && customVersions[tier]) || '';
   const points = useMemo(
-    () => (rawContent.includes('\n## ') || rawContent.startsWith('## ') ? parseLessonPoints(rawContent) : []),
-    [rawContent],
+    () => (rawContent.includes('\n## ') || rawContent.startsWith('## ') ? parseLessonPoints(rawContent, topic) : []),
+    [rawContent, topic],
   );
   const sourceLabel = contentSource === 'course_notes'
     ? 'Course notes'
@@ -936,7 +960,7 @@ function ContentRenderer({
         {!lessonError && rawContent && points.length > 0 && view === 'overview' && <Overview points={points} />}
         {!lessonError && rawContent && points.length > 0 && view === 'visual' && <LessonFlow points={points} />}
         {!lessonError && rawContent && points.length > 0 && view === 'code' && <CodeView topic={topic} content={rawContent} />}
-        {!lessonError && rawContent && points.length > 0 && view === 'notes' && <LessonPoints content={rawContent} startClosed />}
+        {!lessonError && rawContent && points.length > 0 && view === 'notes' && <LessonPoints content={rawContent} topic={topic} startClosed />}
       </div>
     </article>
   );

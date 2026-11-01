@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { lessonIsReady } from './ollama.js';
+import { lessonIsOnTopic, lessonIsReady, lessonValidationError } from './ollama.js';
 
 const goodLesson = `## What it is
 A stack is a container that lets you add and remove items from one accessible end, called the top. Its last-in, first-out rule means the newest item is removed before older items.
@@ -46,4 +46,21 @@ test('rejects duplicated sentences within a section', () => {
 test('rejects the topic title repeated as a bullet', () => {
   const lesson = goodLesson.replace('## What it is\n', '## What it is\n- Stack.\n');
   assert.equal(lessonIsReady('stack', lesson), false);
+  assert.match(lessonValidationError('stack', lesson), /topic title as a bullet/);
+});
+
+test('does not treat request wording as part of the subject', () => {
+  assert.equal(lessonIsOnTopic('How does a stack work?', 'A stack uses last-in, first-out ordering.'), true);
+});
+
+test('does not reject a relevant answer only because it is concise', () => {
+  assert.equal(lessonIsOnTopic('stack', 'A stack stores values.'), true);
+});
+
+test('explains which section failed validation', () => {
+  const lesson = goodLesson.replace(
+    /## What it is[\s\S]*?\n\n## Why it matters/,
+    '## What it is\nA stack is a container.\n\n## Why it matters',
+  );
+  assert.match(lessonValidationError('stack', lesson), /What it is must contain 2–4 complete sentences/);
 });

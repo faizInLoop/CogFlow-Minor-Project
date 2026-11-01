@@ -68,7 +68,7 @@ export function storeLesson(key, value) {
 }
 
 export function lessonKey({ topic, tier, angle }) {
-  return ['lesson', 'v7', topic.trim().toLowerCase(), tier, angle || 'default'].join('|');
+  return ['lesson', 'v8', topic.trim().toLowerCase(), tier, angle || 'default'].join('|');
 }
 
 export function quizKey({ topic, tier, lesson }) {
@@ -113,7 +113,7 @@ function providerConfigs() {
       name: `Groq key ${index + 1}`,
       kind: 'openai-compatible',
       endpoint: 'https://api.groq.com/openai/v1/chat/completions',
-      model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+      model: process.env.GROQ_MODEL || 'qwen/qwen3.8-27b',
       key,
     });
   }
@@ -138,9 +138,18 @@ export function configuredProviderNames() {
 
 function topicWords(topic) {
   const fillerWords = new Set([
-    'about', 'basics', 'describe', 'explain', 'from', 'into', 'learn',
-    'kind', 'kinds', 'overview', 'teach', 'that', 'this', 'type', 'types',
-    'them', 'understand', 'what', 'with', 'work', 'works',
+    'about', 'after', 'again', 'also', 'although', 'among', 'and', 'any',
+    'are', 'because', 'been', 'before', 'being', 'between', 'both', 'could',
+    'describe', 'does', 'doing', 'down', 'each', 'explain', 'explained',
+    'explaining', 'find', 'first', 'for', 'from', 'give', 'given', 'gives',
+    'giving', 'have', 'having', 'help', 'helps', 'how', 'into', 'its', 'kind',
+    'kinds', 'learn', 'make', 'makes', 'making', 'many', 'more', 'most',
+    'much', 'need', 'needs', 'only', 'other', 'over', 'overview', 'same',
+    'some', 'such', 'teach', 'than', 'that', 'their', 'them', 'then',
+    'there', 'these', 'they', 'thing', 'things', 'this', 'those', 'through',
+    'type', 'types', 'under', 'understand', 'uses', 'using', 'very', 'want',
+    'what', 'when', 'where', 'which', 'while', 'with', 'work', 'works',
+    'would', 'your', 'basics',
   ]);
   return (topic.toLowerCase().match(/[a-z0-9]{4,}/g) || []).filter((word) => !fillerWords.has(word));
 }
@@ -155,10 +164,9 @@ function topicWordForms(word) {
 
 export function lessonIsOnTopic(topic, text) {
   const body = (text || '').toLowerCase();
-  if (body.length < 400) return false;
-  if (/execution topology|universalcontroller|committed invariant|conceptual blueprint|lorem ipsum|as an ai/.test(body)) return false;
+  if (/lorem ipsum|as an ai language model|as an ai assistant/.test(body)) return false;
   const words = topicWords(topic);
-  if (words.length === 0) return body.includes(topic.toLowerCase().slice(0, 12));
+  if (words.length === 0) return true;
   const hits = words.filter((word) => topicWordForms(word)
     .some((form) => new RegExp(`\\b${form.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(body)));
   return hits.length >= Math.min(2, words.length);
@@ -178,7 +186,7 @@ function normalizedLessonText(text) {
 }
 
 function hasLessonPlaceholder(text) {
-  return /execution topology|universalcontroller|committed invariant|conceptual blueprint|lorem ipsum|as an ai|understand the exact constraints|standard solutions degrade|\bTODO\b|insert (?:topic|example|content)|placeholder/i.test(text);
+  return /lorem ipsum|as an ai language model|as an ai assistant|\bTODO\b|insert (?:topic|example|content)|placeholder/i.test(text);
 }
 
 function lessonParts(text) {
@@ -203,54 +211,72 @@ function lessonParts(text) {
   return { cleaned, withoutCodeBlocks, headings, prose, sections };
 }
 
-export function lessonIsReady(topic, text) {
+export function lessonValidationError(topic, text) {
   const { cleaned, withoutCodeBlocks, headings, prose, sections } = lessonParts(text);
-  if (/^#{3,6}\s/m.test(withoutCodeBlocks)) return false;
+  if (!prose) return 'Lesson is empty.';
+  if (/^#{3,6}\s/m.test(withoutCodeBlocks)) return 'Use only level-two headings (##).';
   const expectedHeadings = [...REQUIRED_HEADINGS];
   if (headings.includes(OPTIONAL_CODE_HEADING)) expectedHeadings.push(OPTIONAL_CODE_HEADING);
   if (headings.length !== expectedHeadings.length
-    || !expectedHeadings.every((heading, index) => headings[index] === heading)) return false;
+    || !expectedHeadings.every((heading, index) => headings[index] === heading)) {
+    return 'Required lesson headings are missing, duplicated, or out of order.';
+  }
 
   const firstHeadingAt = prose.search(/^## /m);
-  if (firstHeadingAt < 0 || prose.slice(0, firstHeadingAt).trim()) return false;
-  if (!lessonIsOnTopic(topic, prose)) return false;
-  if (hasLessonPlaceholder(prose)) return false;
+  if (firstHeadingAt < 0 || prose.slice(0, firstHeadingAt).trim()) return 'Lesson must start with its first heading.';
+  if (!lessonIsOnTopic(topic, prose)) return 'Lesson does not mention the requested topic.';
+  if (hasLessonPlaceholder(prose)) return 'Lesson contains placeholder or model-introduction text.';
 
   const topicKey = normalizedLessonText(topic);
+  const topicTerms = topicWords(topic).map(normalizedLessonText);
   const seenSentences = new Set();
   for (const heading of REQUIRED_HEADINGS) {
     const sentences = lessonSentences(sections.get(heading));
-    if (sentences.length < 2 || sentences.length > 4) return false;
+    const bulletLines = sections.get(heading).split(/\r?\n/)
+      .map((line) => line.trim().match(/^[-*+]\s+(.+)$/)?.[1])
+      .filter(Boolean)
+      .map(normalizedLessonText);
+    if (bulletLines.some((line) => line === topicKey || (topicTerms.length === 1 && line === topicTerms[0]))) {
+      return 'Lesson repeats the topic title as a bullet.';
+    }
+    if (sentences.length < 2 || sentences.length > 4) {
+      return `${heading.slice(3)} must contain 2–4 complete sentences (found ${sentences.length}).`;
+    }
+
     for (const sentence of sentences) {
       const key = normalizedLessonText(sentence);
       const wordCount = sentence.match(/\b[\p{L}\p{N}'-]+\b/gu)?.length || 0;
-      if (wordCount > 35 || !/[.!?]["')\]]?$/.test(sentence) || key === topicKey || seenSentences.has(key)) return false;
+      if (wordCount > 35) return `${heading.slice(3)} contains a sentence longer than 35 words.`;
+      if (!/[.!?]["')\]]?$/.test(sentence)) return `${heading.slice(3)} contains an unfinished sentence.`;
+      if (key === topicKey || seenSentences.has(key)) return 'Lesson repeats its topic title or a sentence.';
       seenSentences.add(key);
     }
+  }
+
+  const checkQuestions = lessonSentences(sections.get('## Check yourself'));
+  if (checkQuestions.length < 2 || checkQuestions.length > 4
+    || checkQuestions.some((sentence) => !/\?$/.test(sentence))) {
+    return 'Check yourself must contain 2–4 answerable questions.';
   }
 
   const codeAt = cleaned.search(/^## Code\s*$/m);
   if (codeAt >= 0) {
     const code = cleaned.slice(codeAt).replace(/^## Code\s*/m, '').trim();
     const block = code.match(/```[^\n]*\n([\s\S]*?)```/);
-    if (!block || block[1].split(/\r?\n/).length > 12) return false;
+    if (!block || block[1].split(/\r?\n/).length > 12) {
+      return 'Code must contain one fenced example of at most 12 lines.';
+    }
   }
-  return true;
+  return null;
 }
 
-function mustTryNextProvider(topic, text) {
-  const { withoutCodeBlocks, prose } = lessonParts(text);
-  if (/^#{3,6}\s/m.test(withoutCodeBlocks)) return true;
-  if (hasLessonPlaceholder(prose)) return true;
+export function lessonIsReady(topic, text) {
+  return lessonValidationError(topic, text) === null;
+}
 
-  const topicKey = normalizedLessonText(topic);
-  const seenSentences = new Set();
-  for (const sentence of lessonSentences(prose)) {
-    const key = normalizedLessonText(sentence);
-    if (key === topicKey || seenSentences.has(key)) return true;
-    seenSentences.add(key);
-  }
-  return false;
+function mustTryNextProvider(validationError) {
+  return /level-two headings|does not mention the requested topic|placeholder|repeats its topic title|repeats the topic title as a bullet|repeats a sentence/i
+    .test(validationError || '');
 }
 
 export function stripDiagrams(text) {
@@ -310,8 +336,7 @@ Only when "${topic}" is a procedure a programmer writes, add a final ## Code sec
   ];
 }
 
-function repairMessages(topic, draft, tier) {
-  const depth = DEPTH[tier] || DEPTH.tier3;
+function repairMessages(topic, draft, validationError) {
   return [
     {
       role: 'system',
@@ -320,6 +345,7 @@ function repairMessages(topic, draft, tier) {
     {
       role: 'user',
       content: `The learner asked: "${topic}"
+The previous draft failed validation: ${validationError}
 
 Rewrite this draft from scratch to answer the learner's exact request. Treat it only as a source of facts, not as a format to copy. Keep one small, factually consistent example. Use exactly these five headings once, in this order:
 ## What it is
@@ -354,21 +380,21 @@ export async function writeCheckedLesson({ subject, topic, tier, angle, signal }
         options,
       );
       let lesson = stripDiagrams(raw);
+      let validationError = lessonValidationError(topic, lesson);
 
-      if (!lessonIsReady(topic, lesson)) {
-        if (mustTryNextProvider(topic, lesson)) {
-          throw new Error('Generated lesson contains a repeated sentence, title echo, placeholder, or unsupported heading.');
-        }
+      if (validationError) {
+        if (mustTryNextProvider(validationError)) throw new Error(validationError);
         const repaired = await collectFromProvider(
           provider,
-          repairMessages(topic, raw, tier),
+          repairMessages(topic, raw, validationError),
           options,
         );
         lesson = stripDiagrams(repaired);
+        validationError = lessonValidationError(topic, lesson);
       }
 
-      if (!lessonIsReady(topic, lesson)) {
-        throw new Error('Generated lesson did not pass the topic and completeness checks.');
+      if (validationError) {
+        throw new Error(validationError);
       }
 
       storeLesson(key, lesson);
@@ -428,7 +454,14 @@ async function* streamProviderChat(provider, messages, { numPredict = 420, signa
       const detail = await res.text();
       throw new Error(detail.slice(0, 180) || `Ollama returned ${res.status}`);
     }
-    throw new Error(`Provider returned HTTP ${res.status}.`);
+    let detail = '';
+    try {
+      const body = await res.json();
+      detail = body.error?.message || '';
+    } catch {
+      detail = '';
+    }
+    throw new Error(detail ? `Provider returned HTTP ${res.status}: ${detail}` : `Provider returned HTTP ${res.status}.`);
   }
   if (!res.body) throw new Error('Provider returned an empty response stream.');
 

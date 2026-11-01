@@ -6,7 +6,7 @@ import SessionTimeline from '../components/SessionTimeline';
 import ContentRenderer from '../components/ContentRenderer';
 import WebcamMonitor from '../components/WebcamMonitor';
 import { SUBJECTS } from '../data/subjects';
-import { saveSession, streamDynamicContent } from '../services/api';
+import { getCachedDynamicContent, saveSession, streamDynamicContent } from '../services/api';
 import { useUser } from '../context/UserContext';
 import {
   Brain, ArrowLeft, ArrowRight, CheckCircle2, Sliders, Activity,
@@ -371,6 +371,20 @@ export default function LearningInterface() {
       setContentSource('uploaded_syllabus');
       setLessonProvider('Your notes');
       setLessonError('');
+      setIsSynthesizing(false);
+      return undefined;
+    }
+
+    const cachedLesson = getCachedDynamicContent({
+      subject,
+      topic: currentTopic,
+      tier: currentTier,
+    });
+    if (cachedLesson?.content) {
+      setDynamicContent(cachedLesson.content);
+      setLessonProvider(cachedLesson.provider || '');
+      setLessonError('');
+      setContentSource(cachedLesson.content_source || 'ollama_qwen_dynamic');
       setIsSynthesizing(false);
       return undefined;
     }

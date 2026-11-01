@@ -27,11 +27,10 @@ const TIER_META = {
 // ─────────────────────────────────────────────────────────────
 // Real-time interaction telemetry monitor
 // ─────────────────────────────────────────────────────────────
-function useSignalMonitor(isActive, currentTier, faceActiveRef, readingRootRef) {
+function useSignalMonitor(isActive, currentTier, currentTopic, faceActiveRef, readingRootRef) {
   const [signals, setSignals]         = useState({ mouseVelocity: 0, scrollRate: 0, typingPace: 0 });
   const [cogLoad, setCogLoad]         = useState(50);    // 0-100, for the gauge
   const [suggestion, setSuggestion]   = useState(null);  // 'simpler' | 'harder' | null
-  const [dismissed, setDismissed]     = useState(false); // user dismissed current suggestion
   const mouseHistory   = useRef([]);
   const lastScrollY    = useRef(typeof window !== 'undefined' ? window.scrollY : 0);
   const scrollDeltaAcc = useRef(0);
@@ -39,12 +38,20 @@ function useSignalMonitor(isActive, currentTier, faceActiveRef, readingRootRef) 
   const visitedSections = useRef(new Set());
   const activeSection = useRef(null);
   const sectionRevisits = useRef(0);
-  const observeSince   = useRef(Date.now());
+  const observeSince   = useRef(0);
+  const dismissedAt   = useRef(0);
   const currentTierRef = useRef(currentTier);
   currentTierRef.current = currentTier;
 
   useEffect(() => {
     if (!isActive) return;
+
+    observeSince.current = Date.now();
+    mouseHistory.current = [];
+    keystrokeTs.current = [];
+    visitedSections.current.clear();
+    activeSection.current = null;
+    sectionRevisits.current = 0;
 
     const onMouseMove = (e) => {
       const now = Date.now();
@@ -114,7 +121,7 @@ function useSignalMonitor(isActive, currentTier, faceActiveRef, readingRootRef) 
     const classifyTick = setInterval(() => {
       const elapsedSinceChange = (Date.now() - (observeSince.current || Date.now())) / 1000;
       if (elapsedSinceChange < 30) return;
-      if (dismissed) return;
+      if (Date.now() - dismissedAt.current < 45000) return;
 
       if (faceActiveRef?.current) return;
 
@@ -127,7 +134,7 @@ function useSignalMonitor(isActive, currentTier, faceActiveRef, readingRootRef) 
       if (hasRepeatedSectionRevisits && tierIdx > 0) {
         setSuggestion('simpler');
       }
-    }, 25000);
+    }, 30000);
 
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('scroll', onScroll);
@@ -139,15 +146,24 @@ function useSignalMonitor(isActive, currentTier, faceActiveRef, readingRootRef) 
       clearInterval(velTick);
       clearInterval(classifyTick);
     };
-  }, [isActive, dismissed]);
+  }, [isActive, currentTier, currentTopic]);
+
+  const resetObservationWindow = useCallback(() => {
+    observeSince.current = Date.now();
+  }, []);
 
   const dismissSuggestion = useCallback(() => {
     setSuggestion(null);
-    setDismissed(true);
-    setTimeout(() => setDismissed(false), 45000);
-  }, []);
+    dismissedAt.current = Date.now();
+    resetObservationWindow();
+  }, [resetObservationWindow]);
 
-  return { signals, cogLoad, setCogLoad, suggestion, setSuggestion, dismissSuggestion };
+  const clearSuggestion = useCallback(() => {
+    setSuggestion(null);
+    resetObservationWindow();
+  }, [resetObservationWindow]);
+
+  return { signals, cogLoad, setCogLoad, suggestion, setSuggestion, dismissSuggestion, clearSuggestion };
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -212,12 +228,17 @@ export default function LearningInterface() {
   const [studyView,          setStudyView]          = useState('overview');
   const contentTopRef = useRef(null);
   const elapsedRef    = useRef(0);
+  const tierChangeTimeout = useRef(null);
 
   const faceActiveRef = useRef(false);
-  const { signals, cogLoad, setCogLoad, suggestion, setSuggestion, dismissSuggestion } = useSignalMonitor(isActive, currentTier, faceActiveRef, contentTopRef);
+  const currentTopic = topicNames[currentTopicIndex] || topicNames[0] || 'Core Principles';
+  const { signals, cogLoad, setCogLoad, suggestion, setSuggestion, dismissSuggestion, clearSuggestion } = useSignalMonitor(isActive, currentTier, currentTopic, faceActiveRef, contentTopRef);
 
   const currentTierMeta = TIER_META[currentTier];
-  const currentTopic    = topicNames[currentTopicIndex] || topicNames[0] || 'Core Principles';
+
+  useEffect(() => () => {
+    if (tierChangeTimeout.current) clearTimeout(tierChangeTimeout.current);
+  }, []);
 
   const loadingDescription = useMemo(() => {
     const t = (currentTopic || '').toLowerCase();
@@ -315,7 +336,8 @@ export default function LearningInterface() {
   const changeTier = useCallback((newTier, reason = 'manual') => {
     if (newTier === currentTier) return;
     setContentFading(true);
-    setTimeout(() => {
+    if (tierChangeTimeout.current) clearTimeout(tierChangeTimeout.current);
+    tierChangeTimeout.current = setTimeout(() => {
       const prevTier = currentTier;
       setCurrentTier(newTier);
       setActiveOverrideText(null);
@@ -329,6 +351,7 @@ export default function LearningInterface() {
         reason,
       }]);
       setContentFading(false);
+      tierChangeTimeout.current = null;
     }, 240);
   }, [currentTier, currentTopic]);
 
@@ -348,8 +371,8 @@ export default function LearningInterface() {
     const idx = TIERS.indexOf(currentTier);
     if (suggestion === 'simpler' && idx > 0) changeTier(TIERS[idx - 1], 'ai-suggested');
     if (suggestion === 'harder'  && idx < TIERS.length - 1) changeTier(TIERS[idx + 1], 'ai-suggested');
-    dismissSuggestion();
-  }, [currentTier, suggestion, changeTier, dismissSuggestion]);
+    clearSuggestion();
+  }, [currentTier, suggestion, changeTier, clearSuggestion]);
 
   // Hotkeys: 1/2/3 for tiers, Enter/Esc for suggestion
   useEffect(() => {

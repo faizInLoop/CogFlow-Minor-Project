@@ -59,10 +59,20 @@ export default function WebcamMonitor({ cogState, onStateUpdate, onCognitiveLoad
 
   useEffect(() => {
     let isMounted = true;
-    fetch('/models/cogflow/model.json')
-      .then((response) => { if (isMounted) setModelReady(response.ok); })
+    const controller = new AbortController();
+    fetch('/models/cogflow/logistic_model.json', { signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) throw new Error(`Cognitive model returned HTTP ${response.status}.`);
+        return response.json();
+      })
+      .then((model) => {
+        if (isMounted) setModelReady(model?.model_type === 'multinomial_logistic_regression');
+      })
       .catch(() => { if (isMounted) setModelReady(false); });
-    return () => { isMounted = false; };
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
   }, []);
 
   // ── Sync video element with stream on preview/cameraActive toggle ──

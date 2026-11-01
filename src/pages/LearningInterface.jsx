@@ -336,11 +336,23 @@ export default function LearningInterface() {
     return () => clearInterval(t);
   }, [isActive]);
 
-  // Track load history for results chart
+  // Sample load and state at a steady cadence instead of tracking classifier jitter.
   useEffect(() => {
     if (!isActive) return;
-    setLoadHistory(prev => [...prev.slice(-120), { t: elapsedRef.current, load: cogState.load }]);
-  }, [cogState.load, isActive]);
+    const sampleLoad = () => {
+      setLoadHistory((previous) => [
+        ...previous,
+        {
+          t: elapsedRef.current,
+          load: cogStateRef.current.load,
+          state: cogStateRef.current.state,
+        },
+      ].slice(-120));
+    };
+    sampleLoad();
+    const interval = setInterval(sampleLoad, 5000);
+    return () => clearInterval(interval);
+  }, [isActive]);
 
   // Reset override text on topic navigation
   useEffect(() => {

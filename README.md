@@ -33,10 +33,10 @@ Python, PyTorch, FastAPI, and ONNX are not part of this project.
 Install and start [Ollama](https://ollama.com), then download the default local model:
 
 ```bash
-ollama pull qwen2.5:3b
+ollama pull qwen2.5-coder:7b
 ```
 
-The lesson provider order is local Ollama, each configured Groq key, then OpenRouter. If a provider is offline or returns a lesson that fails validation, CogFlow tries the next configured provider. Cloud keys are read by the backend only from environment variables or the ignored project-root `.env` file; never put API keys in frontend code or commit them.
+Custom lessons try each configured Groq key, then OpenRouter, then local Ollama. The local model is `qwen2.5-coder:7b`. If a provider is offline or returns a lesson that fails validation, CogFlow tries the next configured provider. Cloud keys are read by the backend only from environment variables or the ignored project-root `.env` file; never put API keys in frontend code or commit them.
 
 Create `.env` in the project root and add whichever cloud fallbacks you have:
 
@@ -47,7 +47,7 @@ GROQ_API_KEY_2=your_third_groq_key
 OPENROUTER_API_KEY=your_openrouter_key
 ```
 
-The keys are optional. `GROQ_API_KEYS` may also hold a comma-separated key list. Groq uses `qwen/qwen3.8-27b` by default; override it with `GROQ_MODEL`. OpenRouter uses `OPENROUTER_MODEL`, and the local model can be changed with `OLLAMA_MODEL`. Restart `npm run dev` after editing `.env`. The `/api/ai-status` endpoint reports the configured provider names, not their keys.
+The keys are optional. `GROQ_API_KEYS` may also hold a comma-separated key list. Groq uses `qwen/qwen3.8-27b`. The local fallback is always `qwen2.5-coder:7b`. Restart `npm run dev` after editing `.env`. The `/api/ai-status` endpoint reports the configured provider names, not their keys.
 
 ```bash
 npm install

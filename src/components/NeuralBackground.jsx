@@ -3,47 +3,17 @@ import { useEffect, useRef } from 'react';
 // RGB color vectors for each mood theme
 const THEME_PARTICLE_COLORS = {
   dark: {
-    particle: [129, 140, 248],
-    glow: [99, 102, 241],
-    synapse: [99, 102, 241],
-    pointer: [168, 85, 247]
+    particle: [226, 232, 240],
+    glow: [148, 163, 184],
+    synapse: [148, 163, 184],
+    pointer: [241, 245, 249],
   },
-  calm: {
-    particle: [56, 189, 248],     // Ocean cyan
-    glow: [14, 165, 233],
-    synapse: [14, 165, 233],
-    pointer: [56, 189, 248]
+  bright: {
+    particle: [71, 85, 105],
+    glow: [51, 65, 85],
+    synapse: [51, 65, 85],
+    pointer: [15, 23, 42],
   },
-  nature: {
-    particle: [52, 211, 153],    // Emerald peaceful
-    glow: [16, 185, 129],
-    synapse: [16, 185, 129],
-    pointer: [110, 231, 183]
-  },
-  relaxing: {
-    particle: [192, 132, 252],   // Twilight dusk purple
-    glow: [168, 85, 247],
-    synapse: [168, 85, 247],
-    pointer: [216, 180, 254]
-  },
-  solar: {
-    particle: [251, 191, 36],    // Solar amber
-    glow: [245, 158, 11],
-    synapse: [245, 158, 11],
-    pointer: [253, 230, 138]
-  },
-  happy: {
-    particle: [251, 113, 133],   // Sprint vitality ruby
-    glow: [244, 63, 94],
-    synapse: [244, 63, 94],
-    pointer: [253, 164, 175]
-  },
-  overwhelmed: {
-    particle: [148, 163, 184],   // Low sensory muted slate
-    glow: [100, 116, 139],
-    synapse: [100, 116, 139],
-    pointer: [203, 213, 225]
-  }
 };
 
 export default function NeuralBackground() {

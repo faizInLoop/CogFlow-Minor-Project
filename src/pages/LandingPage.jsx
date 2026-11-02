@@ -222,57 +222,63 @@ export default function LandingPage() {
           {/* ── LIVE TIER COMPARISON STUDIO SHOWCASE ── */}
           <div className="animate-fadeInUp delay-400" style={{ maxWidth: 1040, margin: '0 auto 64px', textAlign: 'left' }}>
             <div style={{
-              background: 'linear-gradient(180deg, #0d0d10 0%, #08080a 100%)',
-              border: '1px solid rgba(129, 140, 248, 0.25)',
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border)',
               borderRadius: 24,
               padding: '32px',
-              boxShadow: '0 20px 60px rgba(0, 0, 0, 0.6), 0 0 30px rgba(99, 102, 241, 0.1)',
+              boxShadow: 'var(--shadow-card)',
               position: 'relative',
               overflow: 'hidden'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16, marginBottom: 24, borderBottom: '1px solid var(--border)', paddingBottom: 20 }}>
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                    <Sparkles size={16} style={{ color: '#818cf8' }} />
-                    <span style={{ fontSize: 11.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#818cf8' }}>
+                    <Sparkles size={16} style={{ color: 'var(--text-primary)' }} />
+                    <span style={{ fontSize: 11.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-primary)' }}>
                       Live Adaptation Engine Preview
                     </span>
                   </div>
-                  <h3 style={{ fontSize: 22, fontWeight: 800, color: '#ffffff' }}>
+                  <h3 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)' }}>
                     A course note, at three depths
                   </h3>
                 </div>
 
                 {/* Tier Switcher Tabs */}
-                <div style={{ display: 'flex', gap: 8, background: 'rgba(0,0,0,0.3)', padding: 4, borderRadius: 12, border: '1px solid var(--border)' }}>
-                  <button
-                    onClick={() => { sounds.playClick(); setActiveTierPreview('tier1'); }}
-                    className={`category-pill ${activeTierPreview === 'tier1' ? 'tier-pill-b active' : ''}`}
-                    style={{ fontSize: 12, padding: '6px 14px' }}
-                  >
-                    B-Tier (Foundations)
-                  </button>
-                  <button
-                    onClick={() => { sounds.playClick(); setActiveTierPreview('tier3'); }}
-                    className={`category-pill ${activeTierPreview === 'tier3' ? 'tier-pill-a active' : ''}`}
-                    style={{ fontSize: 12, padding: '6px 14px' }}
-                  >
-                    A-Tier (Core)
-                  </button>
-                  <button
-                    onClick={() => { sounds.playClick(); setActiveTierPreview('tier5'); }}
-                    className={`category-pill ${activeTierPreview === 'tier5' ? 'tier-pill-s active' : ''}`}
-                    style={{ fontSize: 12, padding: '6px 14px' }}
-                  >
-                    S-Tier (Staff)
-                  </button>
+                <div style={{ display: 'flex', gap: 8, background: 'var(--bg-primary)', padding: 4, borderRadius: 12, border: '1px solid var(--border)' }}>
+                  {[
+                    ['tier1', 'B-Tier (Foundations)'],
+                    ['tier3', 'A-Tier (Core)'],
+                    ['tier5', 'S-Tier (Staff)'],
+                  ].map(([id, label]) => {
+                    const selected = activeTierPreview === id;
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => { sounds.playClick(); setActiveTierPreview(id); }}
+                        style={{
+                          all: 'unset',
+                          cursor: 'pointer',
+                          fontSize: 12,
+                          fontWeight: selected ? 700 : 500,
+                          padding: '6px 14px',
+                          borderRadius: 999,
+                          color: selected ? 'var(--atlas-on-selected)' : 'var(--text-secondary)',
+                          background: selected ? 'var(--atlas-selected)' : 'transparent',
+                          border: `1px solid ${selected ? 'var(--atlas-selected)' : 'var(--border)'}`,
+                        }}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
               {/* Dynamic Content Preview Body */}
               <div style={{
-                background: 'rgba(0, 0, 0, 0.35)',
-                border: '1px solid rgba(255, 255, 255, 0.06)',
+                background: 'var(--bg-primary)',
+                border: '1px solid var(--border)',
                 borderRadius: 16,
                 padding: '24px',
               }}>
@@ -288,7 +294,7 @@ export default function LandingPage() {
                   </span>
                 </div>
 
-                <h4 style={{ fontSize: 18, fontWeight: 800, color: '#ffffff', marginBottom: 14 }}>
+                <h4 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 14 }}>
                   {preview.title}
                 </h4>
 

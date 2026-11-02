@@ -1,35 +1,36 @@
-:root {
-  --atlas-paper: #f0efe8;
-  --atlas-surface: #faf9f4;
-  --atlas-ink: #20231d;
-  --atlas-muted: #696c61;
-  --atlas-line: #d7d7cc;
-  --atlas-accent: #bb472d;
-  --atlas-accent-wash: #f2e3dc;
-  --atlas-green: #315b48;
+:root,
+html[data-theme="bright"] {
+  --atlas-paper: #ffffff;
+  --atlas-surface: #ffffff;
+  --atlas-ink: #111111;
+  --atlas-muted: #5c5c5c;
+  --atlas-line: #e4e4e4;
+  --atlas-accent: #111111;
+  --atlas-accent-wash: #f3f3f3;
+  --atlas-selected: #111111;
+  --atlas-on-selected: #ffffff;
+  --atlas-green: #111111;
+  color-scheme: light;
 }
 
 html[data-theme="dark"],
 html[data-theme="dark-zen"] {
-  --atlas-paper: #191c18;
-  --atlas-surface: #242820;
-  --atlas-ink: #f2f0e5;
-  --atlas-muted: #b2b4a8;
-  --atlas-line: #41463b;
-  --atlas-accent: #f18a69;
-  --atlas-accent-wash: #452c25;
-  --atlas-green: #a4c7a8;
+  --atlas-paper: #000000;
+  --atlas-surface: #111111;
+  --atlas-ink: #f5f5f5;
+  --atlas-muted: #b5b5b5;
+  --atlas-line: #2c2c2c;
+  --atlas-accent: #ffffff;
+  --atlas-accent-wash: #1a1a1a;
+  --atlas-selected: #ffffff;
+  --atlas-on-selected: #000000;
+  --atlas-green: #f5f5f5;
+  color-scheme: dark;
 }
 
-html[data-theme="light-zen"] { --atlas-accent: #bb472d; --atlas-accent-wash: #f2e3dc; }
-html[data-theme="calm"] { --atlas-accent: #3d678c; --atlas-accent-wash: #e1eaf0; }
-html[data-theme="focus"] { --atlas-accent: #65518a; --atlas-accent-wash: #e9e3f1; }
-html[data-theme="nature"] { --atlas-accent: #356b4e; --atlas-accent-wash: #e3ebe2; }
-html[data-theme="ocean"] { --atlas-accent: #287080; --atlas-accent-wash: #deebec; }
-html[data-theme="sunset"] { --atlas-accent: #a64e37; --atlas-accent-wash: #f1e2db; }
-html[data-theme="lavender"] { --atlas-accent: #715784; --atlas-accent-wash: #ece5ef; }
-html[data-theme="dark"] { --atlas-accent: #e98868; --atlas-accent-wash: #442c25; }
-html[data-theme="dark-zen"] { --atlas-accent: #b9a2d5; --atlas-accent-wash: #332b3e; }
+html[data-theme="bright"] {
+  color-scheme: light;
+}
 
 html,
 body,
@@ -51,8 +52,12 @@ body::before {
   z-index: -1;
   content: '';
   pointer-events: none;
-  background-image: linear-gradient(rgba(95, 98, 79, .035) 1px, transparent 1px);
+  background-image: linear-gradient(rgba(0, 0, 0, .045) 1px, transparent 1px);
   background-size: 100% 32px;
+}
+
+html[data-theme="dark"] body::before {
+  background-image: linear-gradient(rgba(255, 255, 255, .05) 1px, transparent 1px);
 }
 
 .atlas-page {
@@ -117,9 +122,9 @@ body::before {
 }
 
 .atlas-page .btn-primary {
-  color: #fff !important;
-  background: var(--atlas-accent) !important;
-  border: 1px solid var(--atlas-accent) !important;
+  color: var(--atlas-on-selected) !important;
+  background: var(--atlas-selected) !important;
+  border: 1px solid var(--atlas-selected) !important;
 }
 
 .atlas-page .btn-secondary {
@@ -163,7 +168,7 @@ body::before {
 .atlas-page .btn-primary,
 .atlas-page .btn-primary *,
 .atlas-nav .btn-primary {
-  color: #fff !important;
+  color: var(--atlas-on-selected) !important;
 }
 
 .atlas-nav {
@@ -223,19 +228,22 @@ body::before {
 .atlas-landing .atlas-hero {
   min-height: 0 !important;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
+  justify-content: center;
   padding: 34px 0 42px !important;
   background: transparent !important;
 }
 
 .atlas-hero-inner {
   max-width: 1220px !important;
-  text-align: left !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  text-align: center !important;
 }
 
 .atlas-hero-inner h1 {
   max-width: 1040px;
-  margin: 0 0 24px !important;
+  margin: 0 auto 24px !important;
   font-size: clamp(42px, 5.2vw, 72px) !important;
   line-height: .96 !important;
   letter-spacing: -.065em !important;
@@ -251,8 +259,8 @@ body::before {
 .atlas-hero-inner > p,
 .atlas-hero-inner > div > p {
   max-width: 620px;
-  margin: 0 0 28px !important;
-  text-align: left;
+  margin: 0 auto 28px !important;
+  text-align: center;
   font-size: 18px !important;
   line-height: 1.65;
 }

@@ -679,16 +679,16 @@ export default function LearningInterface() {
                         all: 'unset', cursor: 'pointer',
                         padding: '4px 10px', borderRadius: 7,
                         fontSize: 11, fontWeight: 700,
-                        background: isSelected ? meta.bg : 'transparent',
-                        color: isSelected ? meta.color : 'var(--text-muted)',
-                        border: isSelected ? `1px solid ${meta.border}` : '1px solid transparent',
+                        background: isSelected ? 'var(--atlas-selected)' : 'transparent',
+                        color: isSelected ? 'var(--atlas-on-selected)' : 'var(--text-muted)',
+                        border: isSelected ? '1px solid var(--atlas-selected)' : '1px solid transparent',
                         display: 'flex', alignItems: 'center', gap: 5,
                         transition: 'all 0.2s ease',
                       }}
                     >
                       <span style={{
                         width: 5, height: 5, borderRadius: '50%',
-                        background: isSelected ? meta.color : 'var(--text-muted)'
+                        background: isSelected ? 'var(--atlas-on-selected)' : 'var(--text-muted)'
                       }} />
                       {meta.short}
                       <span style={{
@@ -739,10 +739,10 @@ export default function LearningInterface() {
                   style={{
                     all: 'unset', cursor: 'pointer', padding: '6px 14px',
                     borderRadius: 'var(--radius-full)', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap',
-                    background: isSelected ? 'rgba(99,102,241,0.18)' : 'rgba(255,255,255,0.03)',
-                    color: isSelected ? '#c7d2fe' : isDone ? 'var(--text-secondary)' : 'var(--text-muted)',
-                    border: `1px solid ${isSelected ? 'rgba(129,140,248,0.5)' : 'var(--border)'}`,
-                    boxShadow: isSelected ? '0 0 12px rgba(99,102,241,0.25)' : 'none',
+                    background: isSelected ? 'var(--atlas-selected)' : 'transparent',
+                    color: isSelected ? 'var(--atlas-on-selected)' : isDone ? 'var(--text-secondary)' : 'var(--text-muted)',
+                    border: `1px solid ${isSelected ? 'var(--atlas-selected)' : 'var(--border)'}`,
+                    boxShadow: 'none',
                     display: 'flex', alignItems: 'center', gap: 6,
                     transition: 'var(--transition)',
                   }}
@@ -795,9 +795,9 @@ export default function LearningInterface() {
                         borderRadius: 8,
                         fontSize: 12,
                         fontWeight: selected ? 700 : 500,
-                        background: selected ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.03)',
-                        color: selected ? '#c7d2fe' : 'var(--text-muted)',
-                        border: `1px solid ${selected ? 'rgba(129,140,248,0.45)' : 'rgba(255,255,255,0.06)'}`,
+                        background: selected ? 'var(--atlas-selected)' : 'transparent',
+                        color: selected ? 'var(--atlas-on-selected)' : 'var(--text-muted)',
+                        border: `1px solid ${selected ? 'var(--atlas-selected)' : 'var(--border)'}`,
                       }}
                     >
                       <Icon size={13} />
@@ -953,11 +953,11 @@ export default function LearningInterface() {
 
         {/* ─── RIGHT: Cockpit Sidebar ─── */}
         <div className={`cockpit-sidebar${distractionFree ? ' cockpit-sidebar-hidden' : ''}`} style={{
-            flexDirection: 'column', gap: 16,
-            position: 'sticky', top: 84, alignSelf: 'start',
-            maxHeight: 'calc(100vh - 100px)', overflowY: 'auto',
+            position: 'sticky', top: 76, alignSelf: 'start',
+            maxHeight: 'calc(100vh - 96px)',
             scrollbarWidth: 'thin', scrollbarColor: 'rgba(99,102,241,0.3) transparent',
             paddingRight: 4,
+            paddingBottom: 8,
           }}>
 
             {/* Cognitive Load Gauge */}

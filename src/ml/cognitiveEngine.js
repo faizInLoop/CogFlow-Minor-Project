@@ -102,7 +102,12 @@ export async function readExpression(video) {
     .detectSingleFace(video, detectorOptions)
     .withFaceExpressions();
 
-  if (!detection?.expressions) return null;
+  const box = detection?.detection?.box;
+  const score = detection?.detection?.score;
+  const faceWidth = box?.width || 0;
+  const frameWidth = video?.videoWidth || 0;
+  const largeEnough = frameWidth > 0 && faceWidth / frameWidth >= 0.12;
+  if (!detection?.expressions || !(score >= 0.45) || !largeEnough) return null;
 
   return expressionToVector(detection.expressions);
 }
@@ -182,7 +187,7 @@ export function classificationFromWindow(stack, frames) {
       boredom: probabilities[2],
     },
 
-    reason: reasonFor(state, confidence),
+    reason: reasonFor(state, confidence, latest),
 
     metrics: {
       neutral: latest[6],
@@ -196,18 +201,14 @@ export function classificationFromWindow(stack, frames) {
 }
 
 function reasonFor(state, confidence) {
-  const certainty =
-    confidence >= 0.45 ? 'Stronger' : 'Lower-confidence';
-
+  const score = `${Math.round(confidence * 100)}% model score`;
   if (state === 1) {
-    return `${certainty} model prediction for the DAiSEE-derived overload class.`;
+    return `${score} for the derived overload label. A lesson change still waits until this holds.`;
   }
-
   if (state === 2) {
-    return `${certainty} model prediction for the DAiSEE-derived boredom class.`;
+    return `${score} for the derived boredom label. A lesson change still waits until this holds.`;
   }
-
-  return `${certainty} model prediction for the DAiSEE-derived flow class.`;
+  return `${score} for the derived flow label.`;
 }
 
 export { WINDOW_SIZE };

@@ -33,6 +33,7 @@ export default function WebcamMonitor({ cogState, onStateUpdate, onCognitiveLoad
   const displayedStateRef = useRef('unknown');
   const candidateStateRef = useRef(null);
   const candidateSinceRef = useRef(0);
+  const missedFramesRef = useRef(0);
 
   // Store parent callbacks in refs so interval does NOT restart on parent re-renders
   const onCognitiveLoadUpdateRef = useRef(onCognitiveLoadUpdate);
@@ -182,6 +183,7 @@ export default function WebcamMonitor({ cogState, onStateUpdate, onCognitiveLoad
     let lastStamp = performance.now();
     let busy = false;
     let engine = null;
+    let missedFaces = 0;
 
     const tick = async () => {
       if (busy || cancelled) return;
@@ -205,7 +207,14 @@ export default function WebcamMonitor({ cogState, onStateUpdate, onCognitiveLoad
         if (cancelled) return;
 
         if (!vector) {
+          missedFaces += 1;
           onFaceActiveRef.current?.(false);
+          if (missedFaces < 3) {
+            setStateReason('Face not clear enough for this sample. The last window is kept.');
+            return;
+          }
+          frames.length = 0;
+          setWindowCount(0);
           setDetectedState('Unknown');
           displayedStateRef.current = 'unknown';
           candidateStateRef.current = null;
@@ -213,6 +222,7 @@ export default function WebcamMonitor({ cogState, onStateUpdate, onCognitiveLoad
           setStateReason('Center your face in the camera. Video stays on this device.');
           return;
         }
+        missedFaces = 0;
 
         frames.push(vector);
         if (frames.length > WINDOW_SIZE) frames.shift();
@@ -246,7 +256,7 @@ export default function WebcamMonitor({ cogState, onStateUpdate, onCognitiveLoad
         } else if (candidateStateRef.current !== category) {
           candidateStateRef.current = category;
           candidateSinceRef.current = classifiedAt;
-        } else if (classifiedAt - candidateSinceRef.current >= 8000) {
+        } else if (classifiedAt - candidateSinceRef.current >= 4400) {
           displayedStateRef.current = category;
           candidateStateRef.current = null;
           candidateSinceRef.current = 0;
@@ -445,7 +455,7 @@ export default function WebcamMonitor({ cogState, onStateUpdate, onCognitiveLoad
                   fontSize: 9, fontWeight: 700, color: '#e2e8f0',
                   border: '1px solid rgba(255,255,255,0.1)'
                 }}>
-                  {confidence.toFixed(0)}% Conf
+                  {confidence.toFixed(0)}% score
                 </div>
               )}
 
@@ -485,63 +495,96 @@ export default function WebcamMonitor({ cogState, onStateUpdate, onCognitiveLoad
 
       {/* Real-Time Telemetry & Sustained Window Meter */}
       {cameraActive ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {/* State & Reason Card */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {/* State & Diagnostic Reason Card */}
           <div style={{
-            padding: '10px 12px', borderRadius: 10,
-            background: `${getStateColor()}12`,
-            border: `1px solid ${getStateColor()}30`,
+            padding: '12px 14px',
+            borderRadius: 12,
+            background: `${getStateColor()}14`,
+            border: `1px solid ${getStateColor()}35`,
+            boxShadow: `0 2px 12px ${getStateColor()}10`
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: getStateColor(), display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Activity size={13} />
-                {displayState}
+              <span style={{ fontSize: 13, fontWeight: 800, color: getStateColor(), display: 'flex', alignItems: 'center', gap: 7 }}>
+                <Activity size={14} />
+                {displayState === 'Flow' && 'Flow'}
+                {displayState === 'Overload' && 'Overload'}
+                {displayState === 'Boredom' && 'Boredom'}
+                {displayState === 'Unknown' && 'Reading the window'}
               </span>
-              <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-                Neutral {Math.round((metrics.neutral || 0) * 100)}%
+              <span style={{
+                fontSize: 10,
+                fontWeight: 700,
+                padding: '2px 7px',
+                borderRadius: 6,
+                background: 'rgba(255,255,255,0.06)',
+                color: 'var(--text-secondary)'
+              }}>
+                {confidence > 0 ? `${confidence}% score` : 'Detecting...'}
               </span>
             </div>
-            <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4, lineHeight: 1.4 }}>
+
+            <div style={{ fontSize: 11.5, color: 'var(--text-primary)', marginTop: 6, lineHeight: 1.45, fontWeight: 550 }}>
               {stateReason}
             </div>
-
           </div>
 
-          {channels && (
-            <div style={{ background: 'rgba(255,255,255,0.02)', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)' }}>
-              <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 6 }}>
-                Expression matrix
+          {/* Live Emotional & Facial Cues Breakdown */}
+          <div style={{
+            background: 'rgba(255,255,255,0.02)',
+            padding: '10px 12px',
+            borderRadius: 10,
+            border: '1px solid var(--border)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8
+          }}>
+            <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+              Live Facial Indicators
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+              {/* Focus */}
+              <div style={{ padding: '6px 8px', borderRadius: 8, background: 'rgba(129,140,248,0.06)', border: '1px solid rgba(129,140,248,0.15)' }}>
+                <div style={{ fontSize: 10, color: '#a5b4fc', marginBottom: 2 }}>🧠 Focus</div>
+                <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-primary)' }}>
+                  {Math.round((metrics.neutral || 0) * 100)}%
+                </div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 6 }}>
-                {CHANNELS.map((name, index) => (
-                  <div key={name} style={{ minWidth: 0 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: 'var(--text-muted)', marginBottom: 2 }}>
-                      <span>{name}</span>
-                      <span>{Math.round((channels[index] || 0) * 100)}%</span>
-                    </div>
-                    <div style={{ height: 4, borderRadius: 99, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
-                      <div style={{ height: '100%', width: `${Math.round((channels[index] || 0) * 100)}%`, background: '#818cf8' }} />
-                    </div>
-                  </div>
-                ))}
+
+              {/* Engagement / Joy */}
+              <div style={{ padding: '6px 8px', borderRadius: 8, background: 'rgba(52,211,153,0.06)', border: '1px solid rgba(52,211,153,0.15)' }}>
+                <div style={{ fontSize: 10, color: '#6ee7b7', marginBottom: 2 }}>😊 Joy / Receptive</div>
+                <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-primary)' }}>
+                  {Math.round((metrics.happy || 0) * 100)}%
+                </div>
+              </div>
+
+              {/* Tension / Strain */}
+              <div style={{ padding: '6px 8px', borderRadius: 8, background: 'rgba(244,63,94,0.06)', border: '1px solid rgba(244,63,94,0.15)' }}>
+                <div style={{ fontSize: 10, color: '#fda4af', marginBottom: 2 }}>⚡ Tension</div>
+                <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-primary)' }}>
+                  {Math.round((metrics.tension || 0) * 100)}%
+                </div>
               </div>
             </div>
-          )}
+          </div>
 
-          <div style={{ background: 'rgba(255,255,255,0.02)', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 6 }}>
-              <span>Class matrix</span>
-              <span>{windowCount}/{WINDOW_SIZE}</span>
+          {/* Cognitive State Probabilities */}
+          <div style={{ background: 'rgba(255,255,255,0.02)', padding: '10px 12px', borderRadius: 10, border: '1px solid var(--border)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 8 }}>
+              <span>Model scores</span>
+              <span>{windowCount}/{WINDOW_SIZE} Frames</span>
             </div>
             {[
-              ['Flow', probabilities.flow, '#10b981'],
-              ['Overload', probabilities.overload, '#f43f5e'],
-              ['Boredom', probabilities.boredom, '#f59e0b'],
+              ['Flow (Deep Focus)', probabilities.flow, '#10b981'],
+              ['Overload (Struggle)', probabilities.overload, '#f43f5e'],
+              ['Boredom (Passive)', probabilities.boredom, '#f59e0b'],
             ].map(([label, value, color]) => (
-              <div key={label} style={{ display: 'grid', gridTemplateColumns: '72px 1fr 36px', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                <span style={{ fontSize: 11, color }}>{label}</span>
+              <div key={label} style={{ display: 'grid', gridTemplateColumns: '120px 1fr 38px', alignItems: 'center', gap: 8, marginBottom: 5 }}>
+                <span style={{ fontSize: 11, fontWeight: 650, color }}>{label}</span>
                 <div style={{ height: 6, borderRadius: 99, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
-                  <div style={{ height: '100%', width: `${Math.round((value || 0) * 100)}%`, background: color }} />
+                  <div style={{ height: '100%', width: `${Math.round((value || 0) * 100)}%`, background: color, transition: 'width 0.3s ease' }} />
                 </div>
                 <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', textAlign: 'right' }}>
                   {windowCount >= WINDOW_SIZE ? `${Math.round((value || 0) * 100)}%` : '—'}
@@ -550,14 +593,15 @@ export default function WebcamMonitor({ cogState, onStateUpdate, onCognitiveLoad
             ))}
           </div>
 
-          <div style={{ background: 'rgba(255,255,255,0.02)', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-muted)', marginBottom: 4 }}>
+          {/* Sustained Adaptation Progress */}
+          <div style={{ background: 'rgba(255,255,255,0.02)', padding: '10px 12px', borderRadius: 10, border: '1px solid var(--border)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-muted)', marginBottom: 5 }}>
               <span>Sustained {STATE_NAMES[sustainedState] || STATE_NAMES.unknown}</span>
               <span style={{ fontWeight: 700, color: sustainedSeconds >= 20 ? '#fda4af' : 'var(--text-secondary)' }}>
                 {sustainedSeconds}s / 30s
               </span>
             </div>
-            <div style={{ height: 5, borderRadius: 99, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
+            <div style={{ height: 6, borderRadius: 99, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
               <div style={{
                 height: '100%',
                 width: `${Math.min(100, (sustainedSeconds / 30) * 100)}%`,
@@ -565,8 +609,8 @@ export default function WebcamMonitor({ cogState, onStateUpdate, onCognitiveLoad
                 transition: 'width 0.9s linear'
               }} />
             </div>
-            <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 4 }}>
-              A simpler or harder suggestion waits until that class stays ahead for 30 seconds.
+            <div style={{ fontSize: 9.5, color: 'var(--text-muted)', marginTop: 5 }}>
+              When state persists for 30s, CogFlow offers an automatic tier calibration toast.
             </div>
           </div>
         </div>
@@ -575,11 +619,11 @@ export default function WebcamMonitor({ cogState, onStateUpdate, onCognitiveLoad
           display: 'flex',
           alignItems: 'center',
           gap: 10,
-          padding: '10px 12px',
+          padding: '12px 14px',
           borderRadius: 10,
           background: 'rgba(99,102,241,0.06)',
           border: '1px dashed rgba(99,102,241,0.3)',
-          fontSize: 11,
+          fontSize: 11.5,
           color: 'var(--text-secondary)',
           lineHeight: 1.45,
         }}>

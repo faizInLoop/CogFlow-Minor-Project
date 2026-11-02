@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { lessonIsOnTopic, lessonIsReady, lessonValidationError } from './ollama.js';
+import { lessonIsReady, lessonMessages, lessonValidationError } from './ollama.js';
 
 const goodLesson = `## What it is
 A stack is a container that lets you add and remove items from one accessible end, called the top. Its last-in, first-out rule means the newest item is removed before older items.
@@ -24,6 +24,29 @@ Reading an item does not necessarily remove it, because a peek operation can rep
 
 ## Check yourself
 Which value does pop return after pushing 5 and then 10? What value remains at the top after that removal?`;
+
+const llmLesson = `## What it is
+An LLM, or large language model, learns patterns in text and uses them to generate a likely continuation. It processes text as tokens and predicts the next token from the context it has received.
+
+The model's learned parameters capture statistical relationships rather than a searchable copy of every source. Its output is generated step by step, with each new token influencing what comes next.
+
+## Why it matters
+LLMs can summarize documents, answer questions, and draft text through one flexible interface. They are useful when language is the main way people provide information or ask for help.
+
+Their fluent answers can still contain mistakes because likely wording is not the same as verified fact. Important claims should be checked against reliable sources.
+
+## One example
+A user can ask an LLM to explain how a water cycle works in simple language. The model uses the prompt's words and its learned patterns to compose an explanation.
+
+If the user asks for a shorter version, the model can generate a different response that preserves the central idea. The result depends on both the instruction and the context in the conversation.
+
+## A common mistake
+An LLM does not reason or verify every statement in the same way a person or a calculation tool can. A confident tone alone is not evidence that an answer is accurate.
+
+It also does not necessarily remember a conversation after the session ends. Memory depends on how the application stores and supplies previous messages.
+
+## Check yourself
+What does an LLM predict one step at a time? Why should a reader verify an important claim from its answer?`;
 
 test('accepts a complete lesson with the required sections', () => {
   assert.equal(lessonIsReady('stack', goodLesson), true);
@@ -49,12 +72,31 @@ test('rejects the topic title repeated as a bullet', () => {
   assert.match(lessonValidationError('stack', lesson), /topic title as a bullet/);
 });
 
-test('does not treat request wording as part of the subject', () => {
-  assert.equal(lessonIsOnTopic('How does a stack work?', 'A stack uses last-in, first-out ordering.'), true);
+test('validates structure without requiring topic words to appear verbatim', () => {
+  assert.equal(lessonIsReady('expain the working of a LLM', llmLesson), true);
 });
 
-test('does not reject a relevant answer only because it is concise', () => {
-  assert.equal(lessonIsOnTopic('stack', 'A stack stores values.'), true);
+test('uses the same dynamic lesson prompt for different learner requests', () => {
+  const firstRequest = 'Explain quantum entanglement using a new example.';
+  const secondRequest = 'Compare REST APIs with GraphQL for a small app.';
+  const firstMessages = lessonMessages({
+    subject: 'Physics',
+    topic: firstRequest,
+    tier: 'tier3',
+    angle: 'default',
+  });
+  const secondMessages = lessonMessages({
+    subject: 'Physics',
+    topic: secondRequest,
+    tier: 'tier3',
+    angle: 'default',
+  });
+  assert.ok(firstMessages[1].content.includes(firstRequest));
+  assert.ok(secondMessages[1].content.includes(secondRequest));
+  assert.equal(
+    firstMessages[1].content.split(firstRequest).join('<REQUEST>'),
+    secondMessages[1].content.split(secondRequest).join('<REQUEST>'),
+  );
 });
 
 test('explains which section failed validation', () => {

@@ -136,42 +136,6 @@ export function configuredProviderNames() {
   return providerConfigs().map((provider) => provider.name);
 }
 
-function topicWords(topic) {
-  const fillerWords = new Set([
-    'about', 'after', 'again', 'also', 'although', 'among', 'and', 'any',
-    'are', 'because', 'been', 'before', 'being', 'between', 'both', 'could',
-    'describe', 'does', 'doing', 'down', 'each', 'explain', 'explained',
-    'explaining', 'find', 'first', 'for', 'from', 'give', 'given', 'gives',
-    'giving', 'have', 'having', 'help', 'helps', 'how', 'into', 'its', 'kind',
-    'kinds', 'learn', 'make', 'makes', 'making', 'many', 'more', 'most',
-    'much', 'need', 'needs', 'only', 'other', 'over', 'overview', 'same',
-    'some', 'such', 'teach', 'than', 'that', 'their', 'them', 'then',
-    'there', 'these', 'they', 'thing', 'things', 'this', 'those', 'through',
-    'type', 'types', 'under', 'understand', 'uses', 'using', 'very', 'want',
-    'what', 'when', 'where', 'which', 'while', 'with', 'work', 'works',
-    'would', 'your', 'basics',
-  ]);
-  return (topic.toLowerCase().match(/[a-z0-9]{4,}/g) || []).filter((word) => !fillerWords.has(word));
-}
-
-function topicWordForms(word) {
-  const forms = new Set([word]);
-  if (word.endsWith('ies') && word.length > 4) forms.add(`${word.slice(0, -3)}y`);
-  if (/(?:ches|shes|xes|zes|ses)$/.test(word) && word.length > 5) forms.add(word.slice(0, -2));
-  if (word.endsWith('s') && !word.endsWith('ss') && word.length > 4) forms.add(word.slice(0, -1));
-  return [...forms];
-}
-
-export function lessonIsOnTopic(topic, text) {
-  const body = (text || '').toLowerCase();
-  if (/lorem ipsum|as an ai language model|as an ai assistant/.test(body)) return false;
-  const words = topicWords(topic);
-  if (words.length === 0) return true;
-  const hits = words.filter((word) => topicWordForms(word)
-    .some((form) => new RegExp(`\\b${form.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(body)));
-  return hits.length >= Math.min(2, words.length);
-}
-
 function lessonSentences(text) {
   return text.split(/\r?\n/)
     .map((line) => line.replace(/^\s*(?:[-*+]|\d+\.)\s+/, '').trim())
@@ -224,11 +188,9 @@ export function lessonValidationError(topic, text) {
 
   const firstHeadingAt = prose.search(/^## /m);
   if (firstHeadingAt < 0 || prose.slice(0, firstHeadingAt).trim()) return 'Lesson must start with its first heading.';
-  if (!lessonIsOnTopic(topic, prose)) return 'Lesson does not mention the requested topic.';
   if (hasLessonPlaceholder(prose)) return 'Lesson contains placeholder or model-introduction text.';
 
   const topicKey = normalizedLessonText(topic);
-  const topicTerms = topicWords(topic).map(normalizedLessonText);
   const seenSentences = new Set();
   for (const heading of REQUIRED_HEADINGS) {
     const sentences = lessonSentences(sections.get(heading));
@@ -236,9 +198,7 @@ export function lessonValidationError(topic, text) {
       .map((line) => line.trim().match(/^[-*+]\s+(.+)$/)?.[1])
       .filter(Boolean)
       .map(normalizedLessonText);
-    if (bulletLines.some((line) => line === topicKey || (topicTerms.length === 1 && line === topicTerms[0]))) {
-      return 'Lesson repeats the topic title as a bullet.';
-    }
+    if (bulletLines.some((line) => line === topicKey)) return 'Lesson repeats the topic title as a bullet.';
     if (sentences.length < 2 || sentences.length > 4) {
       return `${heading.slice(3)} must contain 2–4 complete sentences (found ${sentences.length}).`;
     }
@@ -275,7 +235,7 @@ export function lessonIsReady(topic, text) {
 }
 
 function mustTryNextProvider(validationError) {
-  return /level-two headings|does not mention the requested topic|placeholder|repeats its topic title|repeats the topic title as a bullet|repeats a sentence/i
+  return /level-two headings|placeholder|repeats its topic title|repeats the topic title as a bullet|repeats a sentence/i
     .test(validationError || '');
 }
 
@@ -298,11 +258,6 @@ function angleNote(angle) {
 
 export function lessonMessages({ subject, topic, tier, angle }) {
   const depth = DEPTH[tier] || DEPTH.tier3;
-  const exampleGuidance = /\b(?:stack|stacks|lifo)\b/i.test(topic)
-    ? 'For this stack topic, demonstrate the data structure directly: start empty, push 5, push 10, then pop. State that pop returns 10 and leaves [5]. Do not use a function-call stack as the only example or claim that a stack operation pushes the entire program state.'
-    : /\bminimax\b/i.test(topic)
-      ? 'For minimax, show a tiny game-tree calculation with terminal scores: a MIN node chooses the smaller child score, then a MAX node chooses the larger backed-up score. Do not invent a sequence of tic-tac-toe moves or draw a board.'
-    : '';
   return [
     {
       role: 'system',
@@ -327,7 +282,6 @@ Answer the exact request in "${topic}" rather than changing it to a broader topi
 Name the real parts, the action each part takes, and what changes as a result; do not rely on a slogan or analogy alone. Use only the five headings above, once each, with their exact spelling. Do not use any heading deeper than ##, repeat a sentence or the topic title as a sentence or bullet, or include placeholder text.
 
 If the request asks how something works, walk through its mechanism in order. In the example, show a concrete starting state and up to three important actions, including what each action returns or changes and why. Choose a tiny, direct example that demonstrates the mechanism; avoid extra algorithms or arithmetic that are not needed. If the request asks to solve a problem, show the reasoning steps before the conclusion. The common-mistake section must correct one plausible misconception about the topic without adding unrelated uses. If you give a wrong-result example, reuse the exact setup above and state its correct result; do not introduce a second example.
-${exampleGuidance}
 
 Stay on "${topic}". End every sentence and section completely.
 
@@ -616,9 +570,20 @@ function normalizeQuiz(topic, parsed) {
       question: String(parsed.typingPrompt?.question || '').trim() || `Explain ${topic} in your own words and use one example from the lesson.`,
       rubricKeywords: Array.isArray(parsed.typingPrompt?.rubricKeywords)
         ? parsed.typingPrompt.rubricKeywords.map((item) => String(item)).slice(0, 5)
-        : topicWords(topic).slice(0, 4),
+        : quizRubricKeywords(topic),
     },
   };
+}
+
+function quizRubricKeywords(topic) {
+  const requestWords = new Set([
+    'about', 'describe', 'does', 'explain', 'for', 'give', 'help', 'how',
+    'into', 'make', 'need', 'please', 'show', 'teach', 'that', 'the',
+    'this', 'use', 'want', 'what', 'when', 'where', 'which', 'with', 'work',
+    'your',
+  ]);
+  return [...new Set((topic.toLowerCase().match(/[a-z0-9]{3,}/g) || [])
+    .filter((word) => !requestWords.has(word)))].slice(0, 4);
 }
 
 export async function gradeAnswer({ topic, question, studentAnswer, lesson, signal }) {

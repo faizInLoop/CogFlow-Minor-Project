@@ -174,7 +174,7 @@ export default function SessionResults() {
   const scoreColor = tooShort ? '#818cf8' : score >= 75 ? '#34d399' : score >= 50 ? '#818cf8' : '#fbbf24';
 
   return (
-    <div className="page" style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div className="page atlas-page atlas-results" style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <div className="glow-orb glow-orb-1" />
       <div className="glow-orb glow-orb-2" />
       <Navbar currentStep={0} />
@@ -183,7 +183,7 @@ export default function SessionResults() {
         <div className="container" style={{ maxWidth: 1000 }}>
 
           {/* Header & Flow Score Meter */}
-          <div className="animate-fadeInUp" style={{ textAlign: 'center', marginBottom: 44 }}>
+          <div className="atlas-results-intro animate-fadeInUp" style={{ textAlign: 'center', marginBottom: 44 }}>
             {/* Concentric Score Dial */}
             <div style={{
               width: 130, height: 130, borderRadius: '50%',

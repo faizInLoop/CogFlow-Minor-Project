@@ -557,7 +557,7 @@ export default function LearningInterface() {
   const tierIdx = TIERS.indexOf(currentTier);
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', display: 'flex', flexDirection: 'column', position: 'relative' }}>
+    <div className="atlas-page atlas-learning" style={{ minHeight: '100vh', background: 'var(--bg-primary)', display: 'flex', flexDirection: 'column', position: 'relative' }}>
       <div className="glow-orb glow-orb-1" />
       <div className="glow-orb glow-orb-2" />
 
@@ -636,6 +636,7 @@ export default function LearningInterface() {
       {/* ── Main Layout Canvas ── */}
       <div
         className="content-area"
+        data-atlas-focus={distractionFree}
         style={{
           flex: 1,
           display: 'grid',

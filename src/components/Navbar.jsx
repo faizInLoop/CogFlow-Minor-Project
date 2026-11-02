@@ -15,7 +15,7 @@ export default function Navbar({ currentStep = 0, session = null }) {
   const [muted, setMuted] = useState(sounds.isMuted());
   const [activeTheme, setActiveTheme] = useState(() => {
     try {
-      return localStorage.getItem('cogflow_mood_theme') || 'dark';
+      return localStorage.getItem('cogflow_mood_theme') || 'light-zen';
     } catch {
       return 'dark';
     }
@@ -60,7 +60,7 @@ export default function Navbar({ currentStep = 0, session = null }) {
   const isActive = (path) => location.pathname === path;
 
   return (
-    <header style={{
+    <header className="atlas-nav" style={{
       position: 'sticky', top: 0, zIndex: 100,
       background: 'var(--bg-secondary)',
       backdropFilter: 'blur(20px)',
@@ -150,7 +150,7 @@ export default function Navbar({ currentStep = 0, session = null }) {
                 whiteSpace: 'nowrap'
               }}
             >
-              Overview
+              Home
             </Link>
 
             <Link
@@ -166,7 +166,7 @@ export default function Navbar({ currentStep = 0, session = null }) {
                 whiteSpace: 'nowrap'
               }}
             >
-              Curriculum
+              Explore
             </Link>
 
             <Link
@@ -184,7 +184,7 @@ export default function Navbar({ currentStep = 0, session = null }) {
               }}
             >
               <Zap size={12} style={{ color: 'var(--theme-accent, #818cf8)' }} />
-              Adaptive Cockpit
+              Study
             </Link>
           </nav>
         )}
@@ -208,7 +208,7 @@ export default function Navbar({ currentStep = 0, session = null }) {
               width: 5, height: 5, borderRadius: '50%', background: '#34d399',
               boxShadow: '0 0 6px #34d399', animation: 'pulseGlow 2s infinite ease-in-out'
             }} />
-            AI lesson
+            Adaptive learning
           </div>
 
           {/* Sound Toggle Button */}

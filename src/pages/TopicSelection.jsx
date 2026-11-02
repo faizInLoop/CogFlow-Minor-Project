@@ -165,12 +165,12 @@ export default function TopicSelection() {
   const backPath = isUpload ? '/choose-path' : '/subjects';
 
   return (
-    <div className="page" style={{ position: 'relative', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div className="page atlas-page atlas-topics" style={{ position: 'relative', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <div className="glow-orb glow-orb-1" />
       <div className="glow-orb glow-orb-2" />
       <Navbar currentStep={3} />
 
-      <div style={{ flex: 1, padding: '36px 24px 120px', position: 'relative', zIndex: 1 }}>
+      <div className="atlas-stage" style={{ flex: 1, padding: '36px 24px 120px', position: 'relative', zIndex: 1 }}>
         <div className="container" style={{ maxWidth: 1040 }}>
 
           {/* Navigation Bar */}
@@ -335,7 +335,7 @@ export default function TopicSelection() {
           )}
 
           {/* Topics List */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 36 }}>
+          <div className="atlas-topic-list" style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 36 }}>
             {topics.map((topic, idx) => {
               const isSelected = selectedTopics.includes(topic.id);
               const isExpanded = expandedTopic === topic.id;
@@ -344,6 +344,7 @@ export default function TopicSelection() {
               return (
                 <div
                   key={topic.id}
+                  className={`atlas-topic-row${isSelected ? ' is-selected' : ''}`}
                   style={{
                     background: isSelected 
                       ? 'linear-gradient(180deg, rgba(22, 30, 56, 0.8) 0%, rgba(14, 19, 36, 0.95) 100%)' 
@@ -466,7 +467,7 @@ export default function TopicSelection() {
           </div>
 
           {/* ── ON-THE-FLY CUSTOM TOPIC SYNTHESIZER ── */}
-          <div style={{
+          <div className="atlas-topic-composer" style={{
             background: 'var(--gradient-card)',
             border: '1px solid rgba(245, 158, 11, 0.3)',
             borderRadius: 20,
@@ -529,7 +530,7 @@ export default function TopicSelection() {
 
           {/* Sticky Bottom Launch Bar */}
           {selectedTopics.length > 0 && (
-            <div style={{
+            <div className="atlas-selection-dock" style={{
               position: 'fixed',
               bottom: 24,
               left: '50%',

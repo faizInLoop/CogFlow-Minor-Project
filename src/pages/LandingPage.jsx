@@ -100,20 +100,20 @@ export default function LandingPage() {
   const preview = TIER_PREVIEWS[activeTierPreview];
 
   return (
-    <div className="page" style={{ position: 'relative', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div className="page atlas-page atlas-landing" style={{ position: 'relative', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <div className="glow-orb glow-orb-1" />
       <div className="glow-orb glow-orb-2" />
 
       <Navbar currentStep={0} />
 
       {/* ── HERO SECTION ── */}
-      <section style={{
+      <section className="atlas-hero" style={{
         paddingTop: 80,
         paddingBottom: 60,
         position: 'relative',
         zIndex: 1,
       }}>
-        <div className="container" style={{ textAlign: 'center' }}>
+        <div className="container atlas-hero-inner" style={{ textAlign: 'center' }}>
 
           {/* Top Status Pill */}
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginBottom: 26 }} className="animate-fadeInUp">
@@ -136,7 +136,7 @@ export default function LandingPage() {
                 width: 7, height: 7, borderRadius: '50%', background: '#34d399',
                 boxShadow: '0 0 10px #34d399', animation: 'pulseGlow 2s infinite ease-in-out'
               }} />
-              Local Qwen 2.5 AI · Zero-Lag Cognitive Adaptation Active
+              A learning space that adapts to you
             </span>
           </div>
 

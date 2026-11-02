@@ -4,7 +4,7 @@ import Navbar from '../components/Navbar';
 export default function NotFound() {
   const navigate = useNavigate();
   return (
-    <div className="page" style={{ justifyContent: 'center', alignItems: 'center', textAlign: 'center', padding: 24 }}>
+    <div className="page atlas-page atlas-notfound" style={{ justifyContent: 'center', alignItems: 'center', textAlign: 'center', padding: 24 }}>
       <div className="glow-orb glow-orb-1" />
       <div className="glow-orb glow-orb-2" />
       <Navbar currentStep={0} />

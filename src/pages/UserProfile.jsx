@@ -109,12 +109,12 @@ export default function UserProfile() {
     : 'CF';
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', display: 'flex', flexDirection: 'column' }}>
+    <div className="atlas-page atlas-profile" style={{ minHeight: '100vh', background: 'var(--bg-primary)', display: 'flex', flexDirection: 'column' }}>
       <div className="glow-orb glow-orb-1" />
       <div className="glow-orb glow-orb-2" />
       <Navbar currentStep={0} />
 
-      <main className="container" style={{ flex: 1, padding: '32px 24px 60px', maxWidth: 1140 }}>
+      <main className="container atlas-profile-main" style={{ flex: 1, padding: '32px 24px 60px', maxWidth: 1140 }}>
         {/* ── Top Navigation Bar ── */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
           <button

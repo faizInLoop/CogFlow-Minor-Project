@@ -15,7 +15,7 @@ export default function Navbar({ currentStep = 0, session = null }) {
   const [muted, setMuted] = useState(sounds.isMuted());
   const [activeTheme, setActiveTheme] = useState(() => {
     try {
-      return localStorage.getItem('cogflow_mood_theme') || 'dark';
+      return localStorage.getItem('cogflow_mood_theme') || 'light-zen';
     } catch {
       return 'dark';
     }
@@ -60,7 +60,7 @@ export default function Navbar({ currentStep = 0, session = null }) {
   const isActive = (path) => location.pathname === path;
 
   return (
-    <header style={{
+    <header className="atlas-nav" style={{
       position: 'sticky', top: 0, zIndex: 100,
       background: 'var(--bg-secondary)',
       backdropFilter: 'blur(20px)',
@@ -118,11 +118,11 @@ export default function Navbar({ currentStep = 0, session = null }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{
                 width: 7, height: 7, borderRadius: '50%',
-                background: session.state === 'flow' ? '#10b981' : session.state === 'overload' ? '#f43f5e' : '#f59e0b',
-                boxShadow: `0 0 8px ${session.state === 'flow' ? '#10b981' : session.state === 'overload' ? '#f43f5e' : '#f59e0b'}`,
+                background: session.state === 'flow' ? '#10b981' : session.state === 'overload' ? '#f43f5e' : session.state === 'boredom' ? '#f59e0b' : '#94a3b8',
+                boxShadow: `0 0 8px ${session.state === 'flow' ? '#10b981' : session.state === 'overload' ? '#f43f5e' : session.state === 'boredom' ? '#f59e0b' : '#94a3b8'}`,
               }} />
               <span style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-primary)' }}>
-                {session.state}
+                {session.stateLabel || session.state}
               </span>
             </div>
             <span style={{ width: 1, height: 12, background: 'var(--border)' }} />
@@ -150,7 +150,7 @@ export default function Navbar({ currentStep = 0, session = null }) {
                 whiteSpace: 'nowrap'
               }}
             >
-              Overview
+              Home
             </Link>
 
             <Link
@@ -166,7 +166,7 @@ export default function Navbar({ currentStep = 0, session = null }) {
                 whiteSpace: 'nowrap'
               }}
             >
-              Curriculum
+              Explore
             </Link>
 
             <Link
@@ -184,7 +184,7 @@ export default function Navbar({ currentStep = 0, session = null }) {
               }}
             >
               <Zap size={12} style={{ color: 'var(--theme-accent, #818cf8)' }} />
-              Adaptive Cockpit
+              Study
             </Link>
           </nav>
         )}
@@ -208,7 +208,7 @@ export default function Navbar({ currentStep = 0, session = null }) {
               width: 5, height: 5, borderRadius: '50%', background: '#34d399',
               boxShadow: '0 0 6px #34d399', animation: 'pulseGlow 2s infinite ease-in-out'
             }} />
-            Local lesson
+            Adaptive learning
           </div>
 
           {/* Sound Toggle Button */}

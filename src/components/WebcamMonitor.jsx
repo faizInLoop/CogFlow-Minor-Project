@@ -2,7 +2,9 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Camera, CameraOff, Eye, EyeOff, AlertCircle, Brain, Sparkles, Activity } from 'lucide-react';
 import { CHANNELS, WINDOW_SIZE } from '../../shared/cognitiveFeatures';
 
-export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggestion, onFaceActive }) {
+const STATE_NAMES = { flow: 'Flow', overload: 'Overload', boredom: 'Boredom', unknown: 'Unknown' };
+
+export default function WebcamMonitor({ cogState, onStateUpdate, onCognitiveLoadUpdate, onTriggerSuggestion, onFaceActive }) {
   const [cameraActive, setCameraActive] = useState(false);
   const [showPreview, setShowPreview] = useState(true);
   const [modelReady, setModelReady] = useState(false);
@@ -10,7 +12,7 @@ export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggesti
   const [windowCount, setWindowCount] = useState(0);
   
   // Real-time analysis states
-  const [detectedState, setDetectedState] = useState('Idle');
+  const [detectedState, setDetectedState] = useState('Unknown');
   const [stateReason, setStateReason] = useState('Camera inactive');
   const [confidence, setConfidence] = useState(0);
   const [probabilities, setProbabilities] = useState({ flow: 0.33, overload: 0.33, boredom: 0.33 });
@@ -18,7 +20,7 @@ export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggesti
   const [errorMsg, setErrorMsg] = useState(null);
 
   // 30-Second Rule Tracking
-  const [sustainedState, setSustainedState] = useState('Flow');
+  const [sustainedState, setSustainedState] = useState('flow');
   const [sustainedSeconds, setSustainedSeconds] = useState(0);
 
   const videoRef = useRef(null);
@@ -26,17 +28,22 @@ export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggesti
   const intervalRef = useRef(null);
 
   // Sustained tracking refs to avoid stale closures
-  const sustainedStateRef = useRef('Flow');
+  const sustainedStateRef = useRef('unknown');
   const sustainedSecsRef = useRef(0);
+  const displayedStateRef = useRef('unknown');
+  const candidateStateRef = useRef(null);
+  const candidateSinceRef = useRef(0);
 
   // Store parent callbacks in refs so interval does NOT restart on parent re-renders
   const onCognitiveLoadUpdateRef = useRef(onCognitiveLoadUpdate);
   const onTriggerSuggestionRef = useRef(onTriggerSuggestion);
   const onFaceActiveRef = useRef(onFaceActive);
+  const onStateUpdateRef = useRef(onStateUpdate);
   useEffect(() => {
     onCognitiveLoadUpdateRef.current = onCognitiveLoadUpdate;
     onTriggerSuggestionRef.current = onTriggerSuggestion;
     onFaceActiveRef.current = onFaceActive;
+    onStateUpdateRef.current = onStateUpdate;
   });
 
   // ── Callback ref: invoked immediately when <video> DOM node is mounted ──
@@ -52,10 +59,20 @@ export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggesti
 
   useEffect(() => {
     let isMounted = true;
-    fetch('/models/cogflow/model.json')
-      .then((response) => { if (isMounted) setModelReady(response.ok); })
+    const controller = new AbortController();
+    fetch('/models/cogflow/logistic_model.json', { signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) throw new Error(`Cognitive model returned HTTP ${response.status}.`);
+        return response.json();
+      })
+      .then((model) => {
+        if (isMounted) setModelReady(model?.model_type === 'multinomial_logistic_regression');
+      })
       .catch(() => { if (isMounted) setModelReady(false); });
-    return () => { isMounted = false; };
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
   }, []);
 
   // ── Sync video element with stream on preview/cameraActive toggle ──
@@ -92,9 +109,14 @@ export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggesti
       setCameraActive(true);
       setChannels(null);
       setWindowCount(0);
+      sustainedStateRef.current = 'unknown';
       sustainedSecsRef.current = 0;
+      displayedStateRef.current = 'unknown';
+      candidateStateRef.current = null;
+      candidateSinceRef.current = 0;
       setSustainedSeconds(0);
-      setDetectedState('Reading');
+      setSustainedState('unknown');
+      setDetectedState('Unknown');
       setStateReason('The expression matrix updates with each frame. The class matrix uses 11 frames.');
     } catch (err) {
       if (streamRef.current) {
@@ -130,10 +152,14 @@ export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggesti
     setCameraActive(false);
     setChannels(null);
     setWindowCount(0);
-    setDetectedState('Idle');
+    setDetectedState('Unknown');
     setStateReason('Camera inactive');
+    setSustainedState('unknown');
     setSustainedSeconds(0);
     sustainedSecsRef.current = 0;
+    displayedStateRef.current = 'unknown';
+    candidateStateRef.current = null;
+    candidateSinceRef.current = 0;
     onFaceActiveRef.current?.(false);
   }, []);
 
@@ -180,8 +206,11 @@ export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggesti
 
         if (!vector) {
           onFaceActiveRef.current?.(false);
+          setDetectedState('Unknown');
+          displayedStateRef.current = 'unknown';
+          candidateStateRef.current = null;
+          candidateSinceRef.current = 0;
           setStateReason('Center your face in the camera. Video stays on this device.');
-          if (frames.length >= WINDOW_SIZE) setDetectedState('No Face Detected');
           return;
         }
 
@@ -197,7 +226,7 @@ export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggesti
         });
 
         if (frames.length < WINDOW_SIZE) {
-          setDetectedState('Reading');
+          setDetectedState('Unknown');
           setStateReason(`Expression matrix is live. Class matrix uses ${frames.length}/${WINDOW_SIZE} frames.`);
           return;
         }
@@ -205,11 +234,23 @@ export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggesti
         const data = engine.classificationFromWindow(stack, frames);
         setConfidence(data.confidence);
         setProbabilities(data.probabilities);
-        setDetectedState(data.state_label);
         setStateReason(data.reason);
         onCognitiveLoadUpdateRef.current?.(data.cognitive_load);
 
-        const category = data.cognitive_state === 1 ? 'Overload' : (data.cognitive_state === 2 ? 'Boredom' : 'Flow');
+        const category = data.cognitive_state === 1 ? 'overload' : (data.cognitive_state === 2 ? 'boredom' : 'flow');
+        setDetectedState(STATE_NAMES[category]);
+        const classifiedAt = performance.now();
+        if (category === displayedStateRef.current) {
+          candidateStateRef.current = null;
+          candidateSinceRef.current = 0;
+        } else if (candidateStateRef.current !== category) {
+          candidateStateRef.current = category;
+          candidateSinceRef.current = classifiedAt;
+        } else if (classifiedAt - candidateSinceRef.current >= 8000) {
+          displayedStateRef.current = category;
+          candidateStateRef.current = null;
+          candidateSinceRef.current = 0;
+        }
         if (category === sustainedStateRef.current) sustainedSecsRef.current += deltaSec;
         else {
           sustainedStateRef.current = category;
@@ -217,9 +258,20 @@ export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggesti
         }
         setSustainedState(category);
         setSustainedSeconds(Math.floor(sustainedSecsRef.current));
-        if (sustainedSecsRef.current >= 30 && category !== 'Flow') {
-          if (category === 'Overload') onTriggerSuggestionRef.current?.('simpler');
-          if (category === 'Boredom') onTriggerSuggestionRef.current?.('harder');
+        onStateUpdateRef.current?.({
+          state: displayedStateRef.current,
+          confidence: data.confidence / 100,
+          source: 'camera',
+          load: data.cognitive_load,
+          probabilities: data.probabilities,
+          sustainedState: category,
+          sustainedSeconds: Math.floor(sustainedSecsRef.current),
+          windowCount: frames.length,
+        });
+        setStateReason(`Raw window: ${STATE_NAMES[category]}. ${data.reason}`);
+        if (sustainedSecsRef.current >= 30 && category !== 'flow') {
+          if (category === 'overload') onTriggerSuggestionRef.current?.('simpler');
+          if (category === 'boredom') onTriggerSuggestionRef.current?.('harder');
           sustainedSecsRef.current = 0;
           setSustainedSeconds(0);
         }
@@ -239,12 +291,12 @@ export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggesti
     };
   }, [cameraActive]);
 
-  // Color mappings
+  const displayState = STATE_NAMES[cogState?.state] || detectedState;
+
   const getStateColor = () => {
-    if (detectedState.includes('Flow')) return '#10b981'; // Emerald
-    if (detectedState.includes('Overload') || detectedState.includes('Confusion')) return '#f43f5e'; // Rose
-    if (detectedState.includes('Boredom') || detectedState.includes('Disengaged')) return '#f59e0b'; // Amber
-    if (detectedState.includes('Calibrating')) return '#818cf8'; // Indigo
+    if (displayState === 'Flow') return '#10b981';
+    if (displayState === 'Overload') return '#f43f5e';
+    if (displayState === 'Boredom') return '#f59e0b';
     return '#94a3b8';
   };
 
@@ -381,7 +433,7 @@ export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggesti
                 border: `1px solid ${getStateColor()}40`
               }}>
                 <span style={{ width: 6, height: 6, borderRadius: '50%', background: getStateColor() }} />
-                {detectedState}
+                {displayState}
               </div>
 
               {/* Confidence Badge Top Right */}
@@ -443,7 +495,7 @@ export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggesti
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: 12, fontWeight: 700, color: getStateColor(), display: 'flex', alignItems: 'center', gap: 6 }}>
                 <Activity size={13} />
-                {detectedState}
+                {displayState}
               </span>
               <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
                 Neutral {Math.round((metrics.neutral || 0) * 100)}%
@@ -500,7 +552,7 @@ export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggesti
 
           <div style={{ background: 'rgba(255,255,255,0.02)', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-muted)', marginBottom: 4 }}>
-              <span>Sustained {sustainedState}</span>
+              <span>Sustained {STATE_NAMES[sustainedState] || STATE_NAMES.unknown}</span>
               <span style={{ fontWeight: 700, color: sustainedSeconds >= 20 ? '#fda4af' : 'var(--text-secondary)' }}>
                 {sustainedSeconds}s / 30s
               </span>
@@ -509,7 +561,7 @@ export default function WebcamMonitor({ onCognitiveLoadUpdate, onTriggerSuggesti
               <div style={{
                 height: '100%',
                 width: `${Math.min(100, (sustainedSeconds / 30) * 100)}%`,
-                background: sustainedState === 'Overload' ? 'var(--rose)' : (sustainedState === 'Boredom' ? 'var(--amber)' : 'var(--emerald)'),
+                background: sustainedState === 'overload' ? 'var(--rose)' : (sustainedState === 'boredom' ? 'var(--amber)' : 'var(--emerald)'),
                 transition: 'width 0.9s linear'
               }} />
             </div>

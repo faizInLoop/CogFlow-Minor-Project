@@ -30,9 +30,27 @@ Python, PyTorch, FastAPI, and ONNX are not part of this project.
 
 ## Run
 
+Install and start [Ollama](https://ollama.com), then download the default local model:
+
+```bash
+ollama pull qwen2.5:3b
+```
+
+The lesson provider order is local Ollama, each configured Groq key, then OpenRouter. If a provider is offline or returns a lesson that fails validation, CogFlow tries the next configured provider. Cloud keys are read by the backend only from environment variables or the ignored project-root `.env` file; never put API keys in frontend code or commit them.
+
+Create `.env` in the project root and add whichever cloud fallbacks you have:
+
+```dotenv
+GROQ_API_KEY=your_first_groq_key
+GROQ_API_KEY_1=your_second_groq_key
+GROQ_API_KEY_2=your_third_groq_key
+OPENROUTER_API_KEY=your_openrouter_key
+```
+
+The keys are optional. `GROQ_API_KEYS` may also hold a comma-separated key list. Groq uses `qwen/qwen3.8-27b` by default; override it with `GROQ_MODEL`. OpenRouter uses `OPENROUTER_MODEL`, and the local model can be changed with `OLLAMA_MODEL`. Restart `npm run dev` after editing `.env`. The `/api/ai-status` endpoint reports the configured provider names, not their keys.
+
 ```bash
 npm install
-npm run prepare
 npm run dev
 ```
 
@@ -53,4 +71,3 @@ The lesson opens immediately. Mouse, scroll, and typing update the side panel. I
 | Boredom (2) | Disengaged | Offer a harder tier |
 
 DAiSEE labels are mapped the same way as before: high confusion or frustration becomes overload, high boredom or low engagement becomes boredom, and the rest is flow.
-

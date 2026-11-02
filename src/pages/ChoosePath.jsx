@@ -13,14 +13,14 @@ export default function ChoosePath() {
   };
 
   return (
-    <div className="page" style={{ position: 'relative', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div className="page atlas-page atlas-pathways" style={{ position: 'relative', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <Navbar currentStep={1} />
 
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '50px 24px', position: 'relative', zIndex: 1 }}>
+      <div className="atlas-pathways-main" style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '50px 24px', position: 'relative', zIndex: 1 }}>
         <div className="container" style={{ maxWidth: 1140 }}>
 
           {/* Heading */}
-          <div className="animate-fadeInUp" style={{ textAlign: 'center', marginBottom: 44 }}>
+          <div className="atlas-pathways-intro animate-fadeInUp" style={{ textAlign: 'center', marginBottom: 44 }}>
             <span style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: '0.08em', color: 'var(--theme-accent, #818cf8)', textTransform: 'uppercase' }}>
               Curriculum Routing · Step 1 of 3
             </span>
@@ -33,7 +33,7 @@ export default function ChoosePath() {
           </div>
 
           {/* 3 Elevated Path Cards */}
-          <div className="grid-3 animate-fadeInUp delay-100" style={{ gap: 24 }}>
+          <div className="grid-3 atlas-pathway-grid animate-fadeInUp delay-100" style={{ gap: 24 }}>
 
             {/* Path 1: Curated Subjects */}
             <SpotlightCard
@@ -219,7 +219,7 @@ export default function ChoosePath() {
             color: 'var(--text-muted)'
           }}>
             <ShieldCheck size={15} style={{ color: '#10b981' }} />
-            <span>Pure OLED Black · Zero cloud storage · In-memory biometric telemetry</span>
+            <span>                        Choose a subject · Set your own pace · Follow your curiosity</span>
           </div>
 
         </div>

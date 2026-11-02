@@ -1,4 +1,5 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { useLayoutEffect } from 'react';
+import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { UserProvider } from './context/UserContext';
 import NeuralBackground from './components/NeuralBackground';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -11,9 +12,20 @@ import SessionResults from './pages/SessionResults';
 import UserProfile from './pages/UserProfile';
 import NotFound from './pages/NotFound';
 
+function ScrollToTop() {
+  const { pathname } = useLocation();
+
+  useLayoutEffect(() => {
+    document.scrollingElement.scrollTop = 0;
+  }, [pathname]);
+
+  return null;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
+      <ScrollToTop />
       <UserProvider>
         <NeuralBackground />
         <ErrorBoundary>

@@ -109,12 +109,12 @@ export default function UserProfile() {
     : 'CF';
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', display: 'flex', flexDirection: 'column' }}>
+    <div className="atlas-page atlas-profile" style={{ minHeight: '100vh', background: 'var(--bg-primary)', display: 'flex', flexDirection: 'column' }}>
       <div className="glow-orb glow-orb-1" />
       <div className="glow-orb glow-orb-2" />
       <Navbar currentStep={0} />
 
-      <main className="container" style={{ flex: 1, padding: '32px 24px 60px', maxWidth: 1140 }}>
+      <main className="container atlas-profile-main" style={{ flex: 1, padding: '32px 24px 60px', maxWidth: 1140 }}>
         {/* ── Top Navigation Bar ── */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
           <button
@@ -392,6 +392,7 @@ export default function UserProfile() {
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14 }}>
                       {topics.map(t => {
                         const tierMeta = TIER_COLORS[t.highest_tier_reached] || TIER_COLORS.tier3;
+                        const hasMasteryScore = Number.isFinite(t.mastery_score);
                         return (
                           <div key={t.id} style={{
                             background: 'rgba(255,255,255,0.015)',
@@ -413,10 +414,14 @@ export default function UserProfile() {
 
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>
                               <span>Retention Score</span>
-                              <span style={{ fontWeight: 800, color: 'var(--text-primary)', fontFamily: "'JetBrains Mono', monospace" }}>{t.mastery_score}%</span>
+                              <span style={{ fontWeight: 800, color: 'var(--text-primary)', fontFamily: "'JetBrains Mono', monospace" }}>
+                                {hasMasteryScore ? `${t.mastery_score}%` : 'Not assessed'}
+                              </span>
                             </div>
                             <div style={{ height: 5, borderRadius: 99, background: 'rgba(255,255,255,0.05)', overflow: 'hidden', marginBottom: 12 }}>
-                              <div style={{ height: '100%', width: `${t.mastery_score}%`, background: 'var(--gradient-brand)', borderRadius: 99 }} />
+                              {hasMasteryScore && (
+                                <div style={{ height: '100%', width: `${t.mastery_score}%`, background: 'var(--gradient-brand)', borderRadius: 99 }} />
+                              )}
                             </div>
 
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-muted)' }}>

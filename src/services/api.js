@@ -3,6 +3,58 @@
  */
 
 const API_BASE = 'http://localhost:8000';
+const LESSON_CACHE_KEY = 'cogflow_lesson_cache';
+const MAX_CACHED_LESSONS = 30;
+const lessonCache = new Map();
+
+function lessonCacheId({ subject = 'General study', topic, tier = 'tier3' }) {
+  return `${subject}|${topic}|${tier}`;
+}
+
+function rememberLesson(key, lesson) {
+  lessonCache.delete(key);
+  lessonCache.set(key, lesson);
+  if (lessonCache.size > MAX_CACHED_LESSONS) {
+    lessonCache.delete(lessonCache.keys().next().value);
+  }
+}
+
+function readStoredLessons() {
+  if (typeof sessionStorage === 'undefined') return {};
+  try {
+    const stored = JSON.parse(sessionStorage.getItem(LESSON_CACHE_KEY) || '{}');
+    return stored && typeof stored === 'object' && !Array.isArray(stored) ? stored : {};
+  } catch (error) {
+    console.warn('[API] Could not read the lesson cache:', error);
+    return {};
+  }
+}
+
+export function getCachedDynamicContent({ subject = 'General study', topic, tier = 'tier3' }) {
+  const key = lessonCacheId({ subject, topic, tier });
+  if (lessonCache.has(key)) return lessonCache.get(key);
+  const cached = readStoredLessons()[key];
+  if (cached && typeof cached.content === 'string') {
+    rememberLesson(key, cached);
+    return cached;
+  }
+  return null;
+}
+
+function storeCachedDynamicContent(key, lesson) {
+  rememberLesson(key, lesson);
+  if (typeof sessionStorage === 'undefined') return;
+
+  try {
+    const stored = readStoredLessons();
+    delete stored[key];
+    stored[key] = lesson;
+    const entries = Object.entries(stored).slice(-MAX_CACHED_LESSONS);
+    sessionStorage.setItem(LESSON_CACHE_KEY, JSON.stringify(Object.fromEntries(entries)));
+  } catch (error) {
+    console.warn('[API] Could not save the lesson cache:', error);
+  }
+}
 
 export async function getUsers() {
   try {
@@ -111,6 +163,11 @@ export async function getUserAnalytics(userId = 'usr_default') {
 // ── On-The-Fly Dynamic Qwen AI Content & Quiz Services ──
 
 export async function streamDynamicContent({ subject = 'General study', topic, subtopic = null, tier = 'tier3', angle = 'default', signal, onDelta }) {
+  if (signal?.aborted) throw new DOMException('The operation was aborted.', 'AbortError');
+  const key = lessonCacheId({ subject, topic, tier });
+  const cached = getCachedDynamicContent({ subject, topic, tier });
+  if (cached) return { ...cached, cached: true };
+
   const res = await fetch(`${API_BASE}/api/generate-content`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -147,6 +204,7 @@ export async function streamDynamicContent({ subject = 'General study', topic, s
     }
   }
   if (!latest?.content) throw new Error('The local model returned an empty lesson.');
+  storeCachedDynamicContent(key, latest);
   return latest;
 }
 

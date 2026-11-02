@@ -49,9 +49,11 @@ router.get('/', (_req, res) => {
 
 router.get('/api/ai-status', async (_req, res) => {
   const ollama = await ollamaStatus();
+  const providers = ollama.providers || ['Ollama'];
   res.json({
-    status: ollama.online ? 'online' : 'offline',
-    primary_provider: 'ollama',
+    status: ollama.online ? 'online' : providers.length > 1 ? 'fallback_configured' : 'offline',
+    primary_provider: providers[0],
+    provider_chain: providers,
     model: ollama.model,
     model_installed: ollama.installed,
     face: 'browser',
@@ -119,13 +121,13 @@ router.post('/api/generate-content', async (req, res) => {
 
   const authored = authoredLesson(topic, tier);
   if (authored) {
-    send({ type: 'done', content: authored, content_source: 'course_notes', cached: true, topic, tier });
+    send({ type: 'done', content: authored, content_source: 'course_notes', provider: 'Course notes', cached: true, topic, tier });
     res.end();
     return;
   }
 
   if (saved && lessonIsReady(topic, saved)) {
-    send({ type: 'done', content: saved, content_source: 'ollama_qwen_dynamic', cached: true, topic, tier });
+    send({ type: 'done', content: saved, content_source: 'cached_checked_lesson', provider: 'Cache', cached: true, topic, tier });
     res.end();
     return;
   }
@@ -137,19 +139,36 @@ router.post('/api/generate-content', async (req, res) => {
   });
   try {
     send({ type: 'status', message: `Writing a note on ${topic}.` });
-    const content = await writeCheckedLesson({
+    const lesson = await writeCheckedLesson({
       subject,
       topic,
       tier,
       angle,
       signal: controller.signal,
     });
-    send({ type: 'done', content, content_source: 'ollama_qwen_dynamic', cached: false, topic, tier });
+    const contentSource = lesson.provider === 'Ollama'
+      ? 'ollama_qwen_dynamic'
+      : lesson.provider.startsWith('Groq')
+        ? 'groq_dynamic'
+        : lesson.provider === 'OpenRouter'
+          ? 'openrouter_dynamic'
+          : 'cached_checked_lesson';
+    send({
+      type: 'done',
+      content: lesson.content,
+      content_source: contentSource,
+      provider: lesson.provider,
+      cached: lesson.provider === 'Cache',
+      topic,
+      tier,
+    });
     res.end();
   } catch (error) {
     const message = controller.signal.aborted
       ? 'The lesson writer was stopped.'
-      : `The local model did not finish this lesson. Check that Ollama is running (${error.message || 'no response'}).`;
+      : ['LESSON_NOT_READY', 'AI_PROVIDERS_FAILED'].includes(error.code)
+        ? error.message
+        : `The local model could not finish this lesson. Check that Ollama is running (${error.message || 'no response'}).`;
     if (!res.headersSent) {
       res.status(503).json({ status: 'error', detail: message });
       return;
@@ -331,7 +350,10 @@ async function saveSession(req, res, next) {
     const adaptationLog = Array.isArray(body.adaptation_log) ? body.adaptation_log.slice(0, 200) : [];
     const finalTier = TIERS.has(body.final_tier) ? body.final_tier : 'tier3';
     const initialTier = TIERS.has(body.initial_tier) ? body.initial_tier : 'tier3';
-    const quizScore = Number(body.quiz_score) || 0;
+    const parsedQuizScore = body.quiz_score === null || body.quiz_score === undefined || body.quiz_score === ''
+      ? null
+      : Number(body.quiz_score);
+    const quizScore = Number.isFinite(parsedQuizScore) ? parsedQuizScore : null;
 
     const session = await LearningSession.create({
       id: id('ses'),
@@ -353,16 +375,17 @@ async function saveSession(req, res, next) {
 
     for (const topic of topics) {
       const existing = await TopicProgress.findOne({ user_id: userId, subject, topic_name: topic });
-      const incomingMastery = quizScore > 0 ? quizScore : (finalTier === 'tier5' ? 90 : finalTier === 'tier1' ? 60 : 75);
       if (existing) {
         existing.times_reviewed += 1;
         existing.last_reviewed = new Date();
         if (TIER_RANK[finalTier] > TIER_RANK[existing.highest_tier_reached]) {
           existing.highest_tier_reached = finalTier;
         }
-        existing.mastery_score = Math.min(100, quizScore > 0
-          ? (existing.mastery_score * 0.4) + (quizScore * 0.6)
-          : existing.mastery_score + 8);
+        if (quizScore !== null) {
+          existing.mastery_score = existing.mastery_score === null || existing.mastery_score === undefined
+            ? quizScore
+            : Math.min(100, (existing.mastery_score * 0.4) + (quizScore * 0.6));
+        }
         await existing.save();
       } else {
         await TopicProgress.create({
@@ -372,7 +395,7 @@ async function saveSession(req, res, next) {
           highest_tier_reached: finalTier,
           times_reviewed: 1,
           last_reviewed: new Date(),
-          mastery_score: incomingMastery,
+          mastery_score: quizScore,
         });
       }
     }

@@ -103,11 +103,11 @@ export default function SubjectSelection() {
   };
 
   return (
-    <div className="page" style={{ position: 'relative', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div className="page atlas-page atlas-subjects" style={{ position: 'relative', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <Navbar currentStep={2} />
 
       {/* Main Content Area with generous bottom clearance for floating bar */}
-      <div style={{ flex: 1, padding: '32px 24px 150px', position: 'relative', zIndex: 1 }}>
+      <div className="atlas-stage" style={{ flex: 1, padding: '32px 24px 150px', position: 'relative', zIndex: 1 }}>
         <div className="container" style={{ maxWidth: 1200 }}>
 
           {/* Top Breadcrumb & Step Counter */}
@@ -226,7 +226,7 @@ export default function SubjectSelection() {
           </div>
 
           {/* Grid of Subject Cards */}
-          <div className="grid-2" style={{ gap: 20, marginBottom: 30 }}>
+          <div className="grid-2 atlas-subject-grid" style={{ gap: 20, marginBottom: 30 }}>
 
             {filtered.map((sub) => {
               const isSelected = selected === sub.id;
@@ -237,7 +237,7 @@ export default function SubjectSelection() {
                   onClick={() => handleSelect(sub.id)}
                   spotlightColor={isSelected ? "rgba(255, 255, 255, 0.08)" : "rgba(255, 255, 255, 0.03)"}
                   borderColor={isSelected ? "var(--theme-accent, #818cf8)" : "rgba(255, 255, 255, 0.08)"}
-                  className="hover-lift"
+                  className={`hover-lift${isSelected ? ' is-selected' : ''}`}
                   style={{
                     padding: '24px 26px',
                     display: 'flex',
@@ -507,7 +507,7 @@ export default function SubjectSelection() {
 
           {/* Sticky Bottom Action Bar */}
           {selected && selectedSubject && (
-            <div style={{
+            <div className="atlas-selection-dock" style={{
               position: 'fixed',
               bottom: 24,
               left: '50%',

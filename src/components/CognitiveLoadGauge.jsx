@@ -3,7 +3,7 @@ import { Activity, Sparkles, AlertTriangle, FastForward } from 'lucide-react';
 
 const STATE_CONFIG = {
   flow: {
-    label: 'Optimal Flow State',
+    label: 'Flow',
     sublabel: 'Focus & retention synchronized',
     color: '#10b981',
     accentColor: '#34d399',
@@ -13,7 +13,7 @@ const STATE_CONFIG = {
     icon: Sparkles
   },
   overload: {
-    label: 'Cognitive Friction',
+    label: 'Overload',
     sublabel: 'Simplification recommended',
     color: '#f43f5e',
     accentColor: '#fb7185',
@@ -22,8 +22,8 @@ const STATE_CONFIG = {
     borderBadge: 'rgba(244, 63, 94, 0.28)',
     icon: AlertTriangle
   },
-  bored: {
-    label: 'Attention Drift',
+  boredom: {
+    label: 'Boredom',
     sublabel: 'Challenge tier recommended',
     color: '#f59e0b',
     accentColor: '#fbbf24',
@@ -32,10 +32,20 @@ const STATE_CONFIG = {
     borderBadge: 'rgba(245, 158, 11, 0.28)',
     icon: FastForward
   },
+  unknown: {
+    label: 'Unknown',
+    sublabel: 'No reliable state signal yet',
+    color: '#94a3b8',
+    accentColor: '#cbd5e1',
+    glowColor: 'rgba(148, 163, 184, 0.18)',
+    bgBadge: 'rgba(148, 163, 184, 0.10)',
+    borderBadge: 'rgba(148, 163, 184, 0.24)',
+    icon: Activity
+  },
 };
 
-export default function CognitiveLoadGauge({ state = 'flow', load = 50 }) {
-  const config = STATE_CONFIG[state] || STATE_CONFIG.flow;
+export default function CognitiveLoadGauge({ state = 'unknown', load = 50, source = 'camera' }) {
+  const config = STATE_CONFIG[state] || STATE_CONFIG.unknown;
   const StateIcon = config.icon;
 
   // Arc calculation (180 degree semi-circle)
@@ -150,11 +160,15 @@ export default function CognitiveLoadGauge({ state = 'flow', load = 50 }) {
             lineHeight: 1,
             letterSpacing: '-0.03em'
           }}>
-            {load}
-            <span style={{ fontSize: 16, color: 'var(--text-muted)', fontWeight: 500 }}>%</span>
+            {source === 'camera' ? (
+              <>
+                {load}
+                <span style={{ fontSize: 16, color: 'var(--text-muted)', fontWeight: 500 }}>%</span>
+              </>
+            ) : '—'}
           </div>
           <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginTop: 2 }}>
-            Index Score
+            {source === 'camera' ? 'Index Score' : 'Behaviour only, low confidence'}
           </div>
         </div>
       </div>

@@ -6,6 +6,7 @@ import {
   Sparkles, BookOpen, Layers, Compass, Zap
 } from 'lucide-react';
 import ThemeSelector from './ThemeSelector';
+import { normalizeTheme } from '../theme';
 import { sounds } from '../utils/soundEffects';
 
 export default function Navbar({ currentStep = 0, session = null }) {
@@ -15,7 +16,7 @@ export default function Navbar({ currentStep = 0, session = null }) {
   const [muted, setMuted] = useState(sounds.isMuted());
   const [activeTheme, setActiveTheme] = useState(() => {
     try {
-      return localStorage.getItem('cogflow_mood_theme') || 'light-zen';
+      return normalizeTheme(localStorage.getItem('cogflow_mood_theme'));
     } catch {
       return 'dark';
     }
@@ -33,15 +34,7 @@ export default function Navbar({ currentStep = 0, session = null }) {
   }, [activeTheme]);
 
   const handleSelectTheme = (themeId) => {
-    setActiveTheme(themeId);
-    document.documentElement.setAttribute('data-theme', themeId);
-    document.documentElement.setAttribute('data-therapy-theme', themeId);
-    document.body.setAttribute('data-theme', themeId);
-    document.body.setAttribute('data-therapy-theme', themeId);
-    try {
-      localStorage.setItem('cogflow_mood_theme', themeId);
-    } catch {}
-    window.dispatchEvent(new CustomEvent('cogflow-theme-change', { detail: { theme: themeId } }));
+    setActiveTheme(normalizeTheme(themeId));
   };
 
   const handleToggleSound = () => {

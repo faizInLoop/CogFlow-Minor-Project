@@ -104,12 +104,11 @@ export default function BiometricPlayground() {
 
   return (
     <div style={{
-      background: 'rgba(10, 14, 26, 0.75)',
+      background: 'var(--bg-card)',
       border: '1px solid var(--border)',
       borderRadius: 'var(--radius-xl)',
       padding: '32px',
       boxShadow: 'var(--shadow-card)',
-      backdropFilter: 'blur(20px)',
       position: 'relative',
       overflow: 'hidden'
     }}>
@@ -135,9 +134,9 @@ export default function BiometricPlayground() {
             style={{
               all: 'unset', cursor: 'pointer', padding: '6px 12px', borderRadius: 8,
               fontSize: 11, fontWeight: 700,
-              background: state === 'Flow' ? 'rgba(52,211,153,0.2)' : 'rgba(255,255,255,0.03)',
-              color: state === 'Flow' ? '#34d399' : 'var(--text-muted)',
-              border: `1px solid ${state === 'Flow' ? 'rgba(52,211,153,0.4)' : 'var(--border)'}`,
+              background: state === 'Flow' ? 'var(--atlas-selected)' : 'transparent',
+              color: state === 'Flow' ? 'var(--atlas-on-selected)' : 'var(--text-secondary)',
+              border: `1px solid ${state === 'Flow' ? 'var(--atlas-selected)' : 'var(--border)'}`,
               transition: 'var(--transition)'
             }}
           >
@@ -148,9 +147,9 @@ export default function BiometricPlayground() {
             style={{
               all: 'unset', cursor: 'pointer', padding: '6px 12px', borderRadius: 8,
               fontSize: 11, fontWeight: 700,
-              background: state === 'Overload' ? 'rgba(244,63,94,0.2)' : 'rgba(255,255,255,0.03)',
-              color: state === 'Overload' ? '#fda4af' : 'var(--text-muted)',
-              border: `1px solid ${state === 'Overload' ? 'rgba(244,63,94,0.4)' : 'var(--border)'}`,
+              background: state === 'Overload' ? 'var(--atlas-selected)' : 'transparent',
+              color: state === 'Overload' ? 'var(--atlas-on-selected)' : 'var(--text-secondary)',
+              border: `1px solid ${state === 'Overload' ? 'var(--atlas-selected)' : 'var(--border)'}`,
               transition: 'var(--transition)'
             }}
           >
@@ -161,9 +160,9 @@ export default function BiometricPlayground() {
             style={{
               all: 'unset', cursor: 'pointer', padding: '6px 12px', borderRadius: 8,
               fontSize: 11, fontWeight: 700,
-              background: state === 'Boredom' ? 'rgba(245,158,11,0.2)' : 'rgba(255,255,255,0.03)',
-              color: state === 'Boredom' ? '#fcd34d' : 'var(--text-muted)',
-              border: `1px solid ${state === 'Boredom' ? 'rgba(245,158,11,0.4)' : 'var(--border)'}`,
+              background: state === 'Boredom' ? 'var(--atlas-selected)' : 'transparent',
+              color: state === 'Boredom' ? 'var(--atlas-on-selected)' : 'var(--text-secondary)',
+              border: `1px solid ${state === 'Boredom' ? 'var(--atlas-selected)' : 'var(--border)'}`,
               transition: 'var(--transition)'
             }}
           >
@@ -176,7 +175,7 @@ export default function BiometricPlayground() {
         {/* Left: Interactive Telemetry Controls */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {/* Slider 1: AU4 Brow Tension */}
-          <div style={{ background: 'rgba(255,255,255,0.02)', padding: '14px 16px', borderRadius: 10, border: '1px solid var(--border)' }}>
+          <div style={{ background: 'var(--bg-primary)', padding: '14px 16px', borderRadius: 10, border: '1px solid var(--border)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
                 <Eye size={13} color="var(--indigo-light)" />
@@ -191,14 +190,14 @@ export default function BiometricPlayground() {
               onChange={e => setBrowFurrow(parseFloat(e.target.value))}
               style={{ width: '100%', accentColor: 'var(--indigo-light)', cursor: 'pointer' }}
             />
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>
               <span>Relaxed (0.0)</span>
               <span>Intense Furrow (1.0)</span>
             </div>
           </div>
 
           {/* Slider 2: Blink Cadence */}
-          <div style={{ background: 'rgba(255,255,255,0.02)', padding: '14px 16px', borderRadius: 10, border: '1px solid var(--border)' }}>
+          <div style={{ background: 'var(--bg-primary)', padding: '14px 16px', borderRadius: 10, border: '1px solid var(--border)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
                 <Activity size={13} color="#34d399" />
@@ -213,14 +212,14 @@ export default function BiometricPlayground() {
               onChange={e => setBlinkRate(parseInt(e.target.value))}
               style={{ width: '100%', accentColor: '#34d399', cursor: 'pointer' }}
             />
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>
               <span>Resting (12)</span>
               <span>Stress Rapid (60)</span>
             </div>
           </div>
 
           {/* Slider 3: Mouse Dynamics */}
-          <div style={{ background: 'rgba(255,255,255,0.02)', padding: '14px 16px', borderRadius: 10, border: '1px solid var(--border)' }}>
+          <div style={{ background: 'var(--bg-primary)', padding: '14px 16px', borderRadius: 10, border: '1px solid var(--border)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
                 <MousePointer size={13} color="#fbbf24" />
@@ -235,7 +234,7 @@ export default function BiometricPlayground() {
               onChange={e => setMouseVelocity(parseInt(e.target.value))}
               style={{ width: '100%', accentColor: '#fbbf24', cursor: 'pointer' }}
             />
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>
               <span>Slow Pausing (5)</span>
               <span>Erratic Skimming (100)</span>
             </div>
@@ -244,7 +243,7 @@ export default function BiometricPlayground() {
 
         {/* Right: Neural Inferred Output & Adaptive Rewriting */}
         <div style={{
-          background: 'rgba(7,9,14,0.6)',
+          background: 'var(--bg-primary)',
           border: '1px solid var(--border)',
           borderRadius: 12,
           padding: '20px',
@@ -259,15 +258,15 @@ export default function BiometricPlayground() {
                 <div style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.08em' }}>
                   Inferred Cognitive State
                 </div>
-                <div style={{ fontSize: 22, fontWeight: 900, color: preview.color, fontFamily: 'Space Grotesk, sans-serif', marginTop: 2 }}>
+                <div style={{ fontSize: 22, fontWeight: 900, color: 'var(--text-primary)', fontFamily: 'Space Grotesk, sans-serif', marginTop: 2 }}>
                   {state} ({loadScore}%)
                 </div>
               </div>
 
               <div style={{
                 padding: '4px 12px', borderRadius: 8,
-                background: preview.bg, border: `1px solid ${preview.color}40`,
-                fontSize: 11, fontWeight: 800, color: preview.color
+                background: 'var(--atlas-selected)', border: '1px solid var(--atlas-selected)',
+                fontSize: 11, fontWeight: 800, color: 'var(--atlas-on-selected)'
               }}>
                 Target: {preview.tier}
               </div>
@@ -280,7 +279,7 @@ export default function BiometricPlayground() {
                 <span style={{ color: '#f43f5e' }}>Overload: {Math.round(probs.overload * 100)}%</span>
                 <span style={{ color: '#fbbf24' }}>Boredom: {Math.round(probs.boredom * 100)}%</span>
               </div>
-              <div style={{ display: 'flex', height: 6, borderRadius: 99, overflow: 'hidden', background: 'rgba(255,255,255,0.05)' }}>
+              <div style={{ display: 'flex', height: 6, borderRadius: 99, overflow: 'hidden', background: 'var(--border)' }}>
                 <div style={{ width: `${probs.flow * 100}%`, background: '#34d399', transition: 'width 0.3s ease' }} />
                 <div style={{ width: `${probs.overload * 100}%`, background: '#f43f5e', transition: 'width 0.3s ease' }} />
                 <div style={{ width: `${probs.boredom * 100}%`, background: '#fbbf24', transition: 'width 0.3s ease' }} />
@@ -289,13 +288,13 @@ export default function BiometricPlayground() {
 
             {/* Live Content Rewriter Preview */}
             <div style={{
-              background: 'rgba(255,255,255,0.02)',
-              border: `1px solid ${preview.color}35`,
+              background: 'var(--bg-primary)',
+              border: '1px solid var(--border)',
               borderRadius: 8,
               padding: '14px',
               transition: 'border-color 0.3s ease',
             }}>
-              <div style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', color: preview.color, letterSpacing: '0.06em', marginBottom: 6 }}>
+              <div style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-primary)', letterSpacing: '0.06em', marginBottom: 6 }}>
                 Course note · {preview.title}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -308,7 +307,7 @@ export default function BiometricPlayground() {
             </div>
           </div>
 
-          <div style={{ marginTop: 14, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.05)', fontSize: 11, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ marginTop: 14, paddingTop: 10, borderTop: '1px solid var(--border)', fontSize: 12, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 6 }}>
             <Sparkles size={12} color="var(--indigo-light)" />
             <span>30-second sustained window prevents erratic oscillation between tiers.</span>
           </div>

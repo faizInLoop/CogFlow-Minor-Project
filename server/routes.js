@@ -133,7 +133,7 @@ router.post('/api/generate-content', async (req, res) => {
   }
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 180000);
+  const timer = setTimeout(() => controller.abort(), 300000);
   res.on('close', () => {
     if (!res.writableEnded) controller.abort();
   });

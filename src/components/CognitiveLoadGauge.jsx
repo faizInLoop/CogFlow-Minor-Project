@@ -84,7 +84,7 @@ export default function CognitiveLoadGauge({ state = 'unknown', load = 50, sourc
             color: 'var(--text-muted)',
             textTransform: 'uppercase'
           }}>
-            Cognitive Index
+            Class score
           </span>
         </div>
         <div style={{
@@ -168,7 +168,7 @@ export default function CognitiveLoadGauge({ state = 'unknown', load = 50, sourc
             ) : '—'}
           </div>
           <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginTop: 2 }}>
-            {source === 'camera' ? 'Index Score' : 'Behaviour only, low confidence'}
+            {source === 'camera' ? 'Model score' : 'Behaviour only, low confidence'}
           </div>
         </div>
       </div>

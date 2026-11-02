@@ -4,6 +4,10 @@ import { connectDb } from './db.js';
 import { seedDefaultUser } from './models.js';
 import routes from './routes.js';
 
+process.on('unhandledRejection', (error) => {
+  console.error('[CogFlow] Unhandled rejection:', error);
+});
+
 const app = express();
 const port = Number(process.env.PORT || 8000);
 

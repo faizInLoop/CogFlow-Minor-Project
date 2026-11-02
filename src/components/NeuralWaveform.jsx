@@ -85,7 +85,8 @@ export default function NeuralWaveform({ defaultBand = 'alpha' }) {
       const centerY = H / 2;
 
       // Draw faint oscilloscope grid lines
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+      const bright = document.documentElement.getAttribute('data-theme') !== 'dark';
+      ctx.strokeStyle = bright ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.08)';
       ctx.lineWidth = 1;
       for (let y = 15; y < H; y += 20) {
         ctx.beginPath();
@@ -151,7 +152,7 @@ export default function NeuralWaveform({ defaultBand = 'alpha' }) {
 
   return (
     <div style={{
-      background: 'rgba(10, 14, 26, 0.75)',
+      background: 'var(--bg-card)',
       border: '1px solid var(--border)',
       borderRadius: 'var(--radius-xl)',
       padding: '24px',
@@ -191,7 +192,7 @@ export default function NeuralWaveform({ defaultBand = 'alpha' }) {
           <div style={{ width: 1, height: 24, background: 'var(--border)' }} />
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>Latency</div>
-            <div style={{ fontSize: 12, fontWeight: 800, fontFamily: "'JetBrains Mono', monospace", color: '#c7d2fe' }}>24.2 ms</div>
+            <div style={{ fontSize: 12, fontWeight: 800, fontFamily: "'JetBrains Mono', monospace", color: 'var(--text-primary)' }}>24.2 ms</div>
           </div>
           <div style={{ width: 1, height: 24, background: 'var(--border)' }} />
           <div style={{ textAlign: 'right' }}>
@@ -205,9 +206,9 @@ export default function NeuralWaveform({ defaultBand = 'alpha' }) {
       <div style={{
         position: 'relative',
         height: 140,
-        background: 'var(--bg-secondary)',
+        background: 'color-mix(in srgb, var(--text-primary) 6%, var(--bg-card))',
         borderRadius: 12,
-        border: '1px solid rgba(255,255,255,0.06)',
+        border: '1px solid var(--border)',
         overflow: 'hidden',
         marginBottom: 16,
       }}>
@@ -217,7 +218,7 @@ export default function NeuralWaveform({ defaultBand = 'alpha' }) {
         <div style={{
           position: 'absolute', top: 8, right: 10,
           fontSize: 9, fontWeight: 800, fontFamily: "'JetBrains Mono', monospace",
-          color: 'rgba(255,255,255,0.25)', letterSpacing: '0.1em'
+          color: 'var(--text-muted)', letterSpacing: '0.1em'
         }}>
           MEDIA-PIPE · 478 LANDMARKS
         </div>

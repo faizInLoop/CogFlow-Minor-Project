@@ -91,8 +91,6 @@ export function normalizeFeatures(features, mean, std) {
 }
 
 export function loadFromProbabilities(probabilities) {
-  const flow = probabilities[0] || 0;
-  const overload = probabilities[1] || 0;
-  const boredom = probabilities[2] || 0;
-  return Math.round(Math.min(100, Math.max(0, overload * 88 + flow * 48 + boredom * 18)));
+  const score = Math.max(probabilities[0] || 0, probabilities[1] || 0, probabilities[2] || 0);
+  return Math.round(Math.min(100, Math.max(0, score * 100)));
 }

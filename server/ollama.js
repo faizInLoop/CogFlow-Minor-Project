@@ -14,24 +14,47 @@ for (const envPath of [path.join(projectRoot, '.env'), path.join(__dirname, '.en
 }
 
 const HOST = process.env.OLLAMA_HOST || 'http://127.0.0.1:11434';
-const MODEL = process.env.OLLAMA_MODEL || 'qwen2.5:3b';
+const LOCAL_MODEL = 'qwen2.5-coder:7b';
+let activeModel = LOCAL_MODEL;
+
+export function getActiveModel() {
+  return LOCAL_MODEL;
+}
+
+function installedLocalModel(names) {
+  return names.find((name) => name === LOCAL_MODEL || name.startsWith(`${LOCAL_MODEL}-`)) || '';
+}
+
+export async function detectOllamaModel() {
+  activeModel = LOCAL_MODEL;
+  try {
+    const res = await fetch(`${HOST}/api/tags`, { signal: AbortSignal.timeout(2000) });
+    if (!res.ok) return activeModel;
+    const body = await res.json();
+    const names = (body.models || []).map((item) => item.name);
+    installedLocalModel(names);
+    return activeModel;
+  } catch {
+    return activeModel;
+  }
+}
 const cachePath = path.join(__dirname, 'data', 'lesson-cache.json');
 
 const DEPTH = {
   tier1: {
     label: 'the easiest true explanation, in short sentences',
     words: '160 to 220 words',
-    predict: 480,
+    predict: 420,
   },
   tier3: {
     label: 'a clear explanation in plain words',
     words: '220 to 280 words',
-    predict: 720,
+    predict: 520,
   },
   tier5: {
     label: 'a precise explanation in plain words, with one real limit',
     words: '260 to 320 words',
-    predict: 820,
+    predict: 560,
   },
 };
 
@@ -79,28 +102,24 @@ export function quizKey({ topic, tier, lesson }) {
 export async function ollamaStatus() {
   try {
     const res = await fetch(`${HOST}/api/tags`, { signal: AbortSignal.timeout(2000) });
-    if (!res.ok) return { online: false, model: MODEL, providers: configuredProviderNames() };
+    if (!res.ok) return { online: false, model: activeModel, providers: configuredProviderNames() };
     const body = await res.json();
     const names = (body.models || []).map((item) => item.name);
+    activeModel = LOCAL_MODEL;
     return {
       online: true,
-      model: MODEL,
-      installed: names.includes(MODEL),
+      model: LOCAL_MODEL,
+      installed: Boolean(installedLocalModel(names)),
       models: names,
       providers: configuredProviderNames(),
     };
   } catch {
-    return { online: false, model: MODEL, installed: false, models: [], providers: configuredProviderNames() };
+    return { online: false, model: activeModel, installed: false, models: [], providers: configuredProviderNames() };
   }
 }
 
 function providerConfigs() {
-  const providers = [{
-    name: 'Ollama',
-    kind: 'ollama',
-    endpoint: `${HOST}/api/chat`,
-    model: MODEL,
-  }];
+  const providers = [];
   const groqKeys = [
     ...(process.env.GROQ_API_KEYS || '').split(','),
     process.env.GROQ_API_KEY,
@@ -128,6 +147,13 @@ function providerConfigs() {
       key: openRouterKey.trim(),
     });
   }
+
+  providers.push({
+    name: 'Ollama',
+    kind: 'ollama',
+    endpoint: `${HOST}/api/chat`,
+    model: activeModel,
+  });
 
   return providers;
 }
@@ -199,14 +225,14 @@ export function lessonValidationError(topic, text) {
       .filter(Boolean)
       .map(normalizedLessonText);
     if (bulletLines.some((line) => line === topicKey)) return 'Lesson repeats the topic title as a bullet.';
-    if (sentences.length < 2 || sentences.length > 4) {
-      return `${heading.slice(3)} must contain 2–4 complete sentences (found ${sentences.length}).`;
+    if (sentences.length < 1 || sentences.length > 8) {
+      return `${heading.slice(3)} must contain 1–8 complete sentences (found ${sentences.length}).`;
     }
 
     for (const sentence of sentences) {
       const key = normalizedLessonText(sentence);
       const wordCount = sentence.match(/\b[\p{L}\p{N}'-]+\b/gu)?.length || 0;
-      if (wordCount > 35) return `${heading.slice(3)} contains a sentence longer than 35 words.`;
+      if (wordCount > 45) return `${heading.slice(3)} contains a sentence longer than 45 words.`;
       if (!/[.!?]["')\]]?$/.test(sentence)) return `${heading.slice(3)} contains an unfinished sentence.`;
       if (key === topicKey || seenSentences.has(key)) return 'Lesson repeats its topic title or a sentence.';
       seenSentences.add(key);
@@ -317,6 +343,7 @@ ${draft}`,
 }
 
 export async function writeCheckedLesson({ subject, topic, tier, angle, signal }) {
+  await detectOllamaModel();
   const key = lessonKey({ topic, tier, angle });
   const saved = cachedLesson(key);
   if (saved && lessonIsReady(topic, saved)) return { content: saved, provider: 'Cache' };
@@ -327,8 +354,8 @@ export async function writeCheckedLesson({ subject, topic, tier, angle, signal }
 
   for (const provider of providers) {
     try {
-      const options = { numPredict: depth.predict, signal };
-      const raw = await collectFromProvider(
+      const options = { numPredict: depth.predict, signal, topic };
+      const raw = await collectLesson(
         provider,
         lessonMessages({ subject, topic, tier, angle }),
         options,
@@ -338,7 +365,7 @@ export async function writeCheckedLesson({ subject, topic, tier, angle, signal }
 
       if (validationError) {
         if (mustTryNextProvider(validationError)) throw new Error(validationError);
-        const repaired = await collectFromProvider(
+        const repaired = await collectLesson(
           provider,
           repairMessages(topic, raw, validationError),
           options,
@@ -348,6 +375,7 @@ export async function writeCheckedLesson({ subject, topic, tier, angle, signal }
       }
 
       if (validationError) {
+        console.warn(`[AI] Rejected draft for “${topic}”: ${validationError}\n${lesson.slice(0, 700)}`);
         throw new Error(validationError);
       }
 
@@ -364,7 +392,7 @@ export async function writeCheckedLesson({ subject, topic, tier, angle, signal }
   const cloudConfigured = providers.length > 1;
   const recovery = cloudConfigured
     ? 'All configured lesson providers failed.'
-    : 'Only local Ollama is configured. Add GROQ_API_KEY, GROQ_API_KEY_2, or OPENROUTER_API_KEY to the project .env file to enable cloud fallbacks.';
+    : `The local model (${activeModel}) could not finish this note.`;
   const error = new Error(`${recovery} ${failures.join(' ')}`);
   error.code = 'AI_PROVIDERS_FAILED';
   throw error;
@@ -438,13 +466,22 @@ async function* streamProviderChat(provider, messages, { numPredict = 420, signa
   }
 }
 
+function readProviderJson(value) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
 function* parseProviderLine(line, local) {
   const trimmed = line.trim();
   if (!trimmed) return;
 
   if (local) {
-    const message = JSON.parse(trimmed);
-    if (message.error) throw new Error(message.error);
+    const message = readProviderJson(trimmed);
+    if (!message) return;
+    if (message.error) throw new Error(typeof message.error === 'string' ? message.error : 'The local model returned an error.');
     const content = message.message?.content || '';
     if (content) yield content;
     return;
@@ -453,7 +490,8 @@ function* parseProviderLine(line, local) {
   if (!trimmed.startsWith('data:')) return;
   const data = trimmed.slice(5).trim();
   if (!data || data === '[DONE]') return;
-  const message = JSON.parse(data);
+  const message = readProviderJson(data);
+  if (!message) return;
   const content = message.choices?.[0]?.delta?.content;
   if (typeof content === 'string' && content) yield content;
   if (Array.isArray(content)) {
@@ -463,9 +501,26 @@ function* parseProviderLine(line, local) {
   }
 }
 
-async function collectFromProvider(provider, messages, options) {
+async function collectLesson(provider, messages, options) {
+  const stop = new AbortController();
+  const onOuterAbort = () => stop.abort();
+  options.signal?.addEventListener('abort', onOuterAbort, { once: true });
+  if (options.signal?.aborted) stop.abort();
   let text = '';
-  for await (const piece of streamProviderChat(provider, messages, options)) text += piece;
+  try {
+    for await (const piece of streamProviderChat(provider, messages, { ...options, signal: stop.signal })) {
+      text += piece;
+      if (options.topic && lessonIsReady(options.topic, stripDiagrams(text))) {
+        stop.abort();
+        break;
+      }
+    }
+  } catch (error) {
+    if (options.signal?.aborted) throw error;
+    if (!text.trim()) throw error;
+  } finally {
+    options.signal?.removeEventListener('abort', onOuterAbort);
+  }
   if (!text.trim()) throw new Error('Provider returned no lesson text.');
   return text;
 }

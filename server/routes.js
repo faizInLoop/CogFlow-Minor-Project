@@ -11,15 +11,16 @@ import {
   gradeAnswer,
   lessonIsReady,
   lessonKey,
-  ollamaStatus,
+  groqStatus,
   writeCheckedLesson,
   writeQuiz,
-} from './ollama.js';
+} from './groq.js';
 import { authoredLesson } from '../shared/lessons.js';
 import { textFromUpload, topicsFromText } from './documents.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const metricsPath = path.join(__dirname, '..', 'public', 'models', 'cogflow', 'metrics.json');
+const cognitiveModelPath = path.join(__dirname, '..', 'public', 'models', 'cogflow', 'logistic_model.json');
 const router = express.Router();
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -48,26 +49,43 @@ router.get('/', (_req, res) => {
 });
 
 router.get('/api/ai-status', async (_req, res) => {
-  const ollama = await ollamaStatus();
-  const providers = ollama.providers || ['Ollama'];
+  const groq = groqStatus();
+  const providers = groq.providers || [];
   res.json({
-    status: ollama.online ? 'online' : providers.length > 1 ? 'fallback_configured' : 'offline',
+    status: groq.configured ? 'configured' : 'offline',
     primary_provider: providers[0],
     provider_chain: providers,
-    model: ollama.model,
-    model_installed: ollama.installed,
+    model: groq.model,
+    model_configured: groq.configured,
     face: 'browser',
     frames_uploaded: false,
-    cognitive_model: fs.existsSync(metricsPath) ? 'daisee-tfjs' : 'untrained',
+    cognitive_model: fs.existsSync(cognitiveModelPath) ? 'multinomial-logistic-regression' : 'missing',
   });
 });
 
 router.get('/api/model-info', (_req, res) => {
-  if (!fs.existsSync(metricsPath)) {
-    res.status(404).json({ status: 'error', detail: 'Train the model with npm run train.' });
+  if (!fs.existsSync(cognitiveModelPath)) {
+    res.status(404).json({ status: 'error', detail: 'The active logistic classifier is missing from public/models/cogflow.' });
     return;
   }
-  res.json({ status: 'success', metrics: JSON.parse(fs.readFileSync(metricsPath, 'utf8')) });
+  const model = JSON.parse(fs.readFileSync(cognitiveModelPath, 'utf8'));
+  res.json({
+    status: 'success',
+    active_model: {
+      model_type: model.model_type,
+      artifact: 'public/models/cogflow/logistic_model.json',
+      feature_count: model.features?.length || 0,
+      classes: model.classes || [],
+      normalization: 'embedded mean and scale',
+    },
+    training_metrics: fs.existsSync(metricsPath)
+      ? {
+        artifact: 'public/models/cogflow/metrics.json',
+        applies_to_active_model: false,
+        metrics: JSON.parse(fs.readFileSync(metricsPath, 'utf8')),
+      }
+      : null,
+  });
 });
 
 router.post('/api/adapt', (req, res) => {
@@ -95,7 +113,7 @@ router.post('/api/generate-lesson', (req, res) => {
     topic,
     versions: null,
     content_source: 'written_when_opened',
-    message: 'The lesson is written from the local model when the study session opens.',
+    message: 'The lesson is written with Groq when the study session opens.',
   });
 });
 
@@ -146,13 +164,9 @@ router.post('/api/generate-content', async (req, res) => {
       angle,
       signal: controller.signal,
     });
-    const contentSource = lesson.provider === 'Ollama'
-      ? 'ollama_qwen_dynamic'
-      : lesson.provider.startsWith('Groq')
-        ? 'groq_dynamic'
-        : lesson.provider === 'OpenRouter'
-          ? 'openrouter_dynamic'
-          : 'cached_checked_lesson';
+    const contentSource = lesson.provider.startsWith('Groq')
+      ? 'groq_dynamic'
+      : 'cached_checked_lesson';
     send({
       type: 'done',
       content: lesson.content,
@@ -168,7 +182,7 @@ router.post('/api/generate-content', async (req, res) => {
       ? 'The lesson writer was stopped.'
       : ['LESSON_NOT_READY', 'AI_PROVIDERS_FAILED'].includes(error.code)
         ? error.message
-        : `The local model could not finish this lesson. Check that Ollama is running (${error.message || 'no response'}).`;
+        : `Groq could not finish this lesson (${error.message || 'no response'}).`;
     if (!res.headersSent) {
       res.status(503).json({ status: 'error', detail: message });
       return;
@@ -198,7 +212,7 @@ router.post('/api/generate-quiz', async (req, res) => {
       status: 'success',
       topic,
       tier,
-      generator: 'ollama',
+      generator: 'groq',
       ...quiz,
     });
   } catch (error) {

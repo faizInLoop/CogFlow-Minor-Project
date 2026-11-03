@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Cpu, ShieldCheck, Database, Layers, ArrowRight, Zap, CheckCircle2 } from 'lucide-react';
+import { Cpu, Database, Layers, Zap, CheckCircle2 } from 'lucide-react';
 import { sounds } from '../utils/soundEffects';
 
 const NODES = [

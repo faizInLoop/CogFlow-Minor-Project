@@ -1,4 +1,4 @@
-import { Activity, Brain, User, TrendingDown, TrendingUp, Clock } from 'lucide-react';
+import { Brain, User, TrendingDown, TrendingUp, Clock } from 'lucide-react';
 
 const TIER_COLORS = {
   tier1: '#34d399', // emerald — simplified

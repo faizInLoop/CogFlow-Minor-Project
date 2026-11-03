@@ -1,7 +1,7 @@
 /**
  * Fast lesson, quiz, and answer responses.
  * These return immediately so the learning screen never waits on a model server.
- * Optional Ollama rewrite is attempted only when it answers inside a short budget.
+ * Dynamic rewrites are handled by the Groq provider when a topic is not authored.
  */
 
 const TIER_ORDER = ['tier1', 'tier3', 'tier5'];

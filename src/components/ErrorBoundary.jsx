@@ -3,7 +3,7 @@ import React from 'react';
 export default class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false, error: null };
+    this.state = { hasError: false, error: null, errorInfo: null };
   }
 
   static getDerivedStateFromError(error) {
@@ -12,10 +12,11 @@ export default class ErrorBoundary extends React.Component {
 
   componentDidCatch(error, errorInfo) {
     console.error('ErrorBoundary caught an unhandled error:', error, errorInfo);
+    this.setState({ errorInfo });
   }
 
   handleReset = () => {
-    this.setState({ hasError: false, error: null });
+    this.setState({ hasError: false, error: null, errorInfo: null });
     window.location.href = '/subjects';
   };
 
@@ -63,6 +64,24 @@ export default class ErrorBoundary extends React.Component {
             <p style={{ fontSize: 13.5, color: 'var(--text-secondary, #94a3b8)', lineHeight: 1.6, marginBottom: 24 }}>
               CogFlow encountered a transient render state while synchronizing real-time telemetry. Click below to smoothly resume your curriculum session.
             </p>
+            <details style={{ marginBottom: 20, textAlign: 'left', color: '#cbd5e1', fontSize: 12 }}>
+              <summary style={{ cursor: 'pointer', marginBottom: 8 }}>View error details</summary>
+              <pre style={{
+                maxHeight: 220,
+                overflow: 'auto',
+                whiteSpace: 'pre-wrap',
+                overflowWrap: 'anywhere',
+                padding: 12,
+                borderRadius: 8,
+                background: '#09090c',
+                color: '#fecaca',
+                fontSize: 11,
+                lineHeight: 1.5
+              }}>
+                {this.state.error?.toString()}
+                {this.state.errorInfo?.componentStack || ''}
+              </pre>
+            </details>
             <button
               onClick={this.handleReset}
               className="btn btn-primary"
@@ -71,7 +90,12 @@ export default class ErrorBoundary extends React.Component {
                 padding: '12px 20px',
                 fontSize: 14,
                 fontWeight: 700,
-                borderRadius: 10
+                borderRadius: 10,
+                border: '1px solid #818cf8',
+                background: '#4f46e5',
+                color: '#ffffff',
+                cursor: 'pointer',
+                appearance: 'none'
               }}
             >
               Resume Curriculum Catalog →

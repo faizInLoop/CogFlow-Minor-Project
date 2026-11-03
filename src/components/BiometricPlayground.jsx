@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Sliders, Brain, Activity, Sparkles, Check, ArrowRight, Eye, MousePointer } from 'lucide-react';
+import { Sliders, Activity, Sparkles, Eye, MousePointer } from 'lucide-react';
 import { sounds } from '../utils/soundEffects';
 
 const PREVIEW_CONTENT = {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import CognitiveLoadGauge from '../components/CognitiveLoadGauge';
@@ -8,16 +8,18 @@ import WebcamMonitor from '../components/WebcamMonitor';
 import { SUBJECTS } from '../data/subjects';
 import { getCachedDynamicContent, saveSession, streamDynamicContent } from '../services/api';
 import { useUser } from '../context/UserContext';
+import { getStateTransitionRecommendation } from '../ml/stateRecommendations';
 import {
-  Brain, ArrowLeft, ArrowRight, CheckCircle2, Sliders, Activity,
-  MousePointer, Scroll, Keyboard, Sparkles, AlertCircle, Clock,
-  Maximize2, Minimize2, Eye, ShieldCheck, ChevronRight, Zap, Check, X, RefreshCw, BookOpen, FileText, Workflow, Code2
+  Brain, ArrowLeft, ArrowRight, CheckCircle2, Activity,
+  MousePointer, Scroll, Keyboard, Sparkles,
+  Maximize2, Minimize2, ChevronRight, Check, X, RefreshCw, BookOpen, Workflow, Code2
 } from 'lucide-react';
 
 // ─────────────────────────────────────────────────────────────
 // Tier ordering: 1 = Simplified, 3 = Standard, 5 = Expert
 // ─────────────────────────────────────────────────────────────
 const TIERS = ['tier1', 'tier3', 'tier5'];
+const EMPTY_TOPIC_VERSIONS = Object.freeze({});
 const TIER_META = {
   tier1: { key: '1', label: 'Simplified', short: 'B-Tier Foundations', color: '#34d399', bg: 'rgba(52,211,153,0.12)', border: 'rgba(52,211,153,0.3)', badge: 'badge-emerald' },
   tier3: { key: '2', label: 'Standard',   short: 'A-Tier Core',        color: '#818cf8', bg: 'rgba(99,102,241,0.12)', border: 'rgba(99,102,241,0.3)', badge: 'badge-indigo'  },
@@ -51,9 +53,8 @@ function behaviorCogState(sectionRevisits) {
 // ─────────────────────────────────────────────────────────────
 // Real-time interaction telemetry monitor
 // ─────────────────────────────────────────────────────────────
-function useSignalMonitor(isActive, currentTier, currentTopic, faceActiveRef, readingRootRef, cogStateRef, onCogStateUpdate) {
+function useSignalMonitor(isActive, faceActiveRef, readingRootRef, cogStateRef, onCogStateUpdate) {
   const [signals, setSignals]         = useState({ mouseVelocity: 0, scrollRate: 0, typingPace: 0 });
-  const [suggestion, setSuggestion]   = useState(null);  // 'simpler' | 'harder' | null
   const mouseHistory   = useRef([]);
   const lastScrollY    = useRef(typeof window !== 'undefined' ? window.scrollY : 0);
   const scrollDeltaAcc = useRef(0);
@@ -61,41 +62,14 @@ function useSignalMonitor(isActive, currentTier, currentTopic, faceActiveRef, re
   const visitedSections = useRef(new Set());
   const activeSection = useRef(null);
   const sectionRevisits = useRef(0);
-  const observeSince   = useRef(0);
-  const dismissedAt   = useRef(0);
-  const suggestionRef = useRef(null);
   const onCogStateUpdateRef = useRef(onCogStateUpdate);
-  const currentTierRef = useRef(currentTier);
-  currentTierRef.current = currentTier;
   useEffect(() => {
     onCogStateUpdateRef.current = onCogStateUpdate;
   }, [onCogStateUpdate]);
 
-  const resetObservationWindow = useCallback(() => {
-    observeSince.current = Date.now();
-  }, []);
-
-  const requestSuggestion = useCallback((kind) => {
-    const tierIndex = TIERS.indexOf(currentTierRef.current);
-    const state = cogStateRef.current;
-    if (suggestionRef.current || Date.now() - dismissedAt.current < 5 * 60 * 1000) return false;
-    if (kind === 'simpler' && tierIndex <= 0) return false;
-    if (kind === 'harder' && tierIndex >= TIERS.length - 1) return false;
-    if (!['simpler', 'harder'].includes(kind)) return false;
-    if (kind === 'simpler' && state.state !== 'overload') return false;
-    if (kind === 'harder' && state.state !== 'boredom') return false;
-    if (state.source === 'camera' && state.sustainedSeconds < 30) return false;
-    if (!['camera', 'behaviour'].includes(state.source)) return false;
-    suggestionRef.current = kind;
-    setSuggestion(kind);
-    resetObservationWindow();
-    return true;
-  }, [cogStateRef, resetObservationWindow]);
-
   useEffect(() => {
     if (!isActive) return;
 
-    observeSince.current = Date.now();
     mouseHistory.current = [];
     keystrokeTs.current = [];
     visitedSections.current.clear();
@@ -171,23 +145,6 @@ function useSignalMonitor(isActive, currentTier, currentTopic, faceActiveRef, re
 
     }, 1000);
 
-    const classifyTick = setInterval(() => {
-      const elapsedSinceChange = (Date.now() - (observeSince.current || Date.now())) / 1000;
-      if (elapsedSinceChange < 30) return;
-      if (Date.now() - dismissedAt.current < 5 * 60 * 1000) return;
-
-      if (faceActiveRef?.current) return;
-
-      const hasRepeatedSectionRevisits = sectionRevisits.current >= 3;
-
-      const tier = currentTierRef.current;
-      const tierIdx = TIERS.indexOf(tier);
-
-      if (hasRepeatedSectionRevisits && tierIdx > 0) {
-        requestSuggestion('simpler');
-      }
-    }, 30000);
-
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('scroll', onScroll);
     window.addEventListener('keydown', onKeyDown);
@@ -196,24 +153,10 @@ function useSignalMonitor(isActive, currentTier, currentTopic, faceActiveRef, re
       window.removeEventListener('scroll', onScroll);
       window.removeEventListener('keydown', onKeyDown);
       clearInterval(velTick);
-      clearInterval(classifyTick);
     };
-  }, [isActive, currentTier, currentTopic, faceActiveRef, onCogStateUpdateRef, readingRootRef, requestSuggestion]);
+  }, [isActive, faceActiveRef, cogStateRef, readingRootRef]);
 
-  const dismissSuggestion = useCallback(() => {
-    suggestionRef.current = null;
-    setSuggestion(null);
-    dismissedAt.current = Date.now();
-    resetObservationWindow();
-  }, [resetObservationWindow]);
-
-  const clearSuggestion = useCallback(() => {
-    suggestionRef.current = null;
-    setSuggestion(null);
-    resetObservationWindow();
-  }, [resetObservationWindow]);
-
-  return { signals, suggestion, requestSuggestion, dismissSuggestion, clearSuggestion };
+  return { signals };
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -245,7 +188,7 @@ export default function LearningInterface() {
     ? stored.topicNames
     : defaultTopicNames;
 
-  const topicVersions = navState.topicVersions || stored?.topicVersions || {};
+  const topicVersions = navState.topicVersions || stored?.topicVersions || EMPTY_TOPIC_VERSIONS;
 
   // Persist session to survive browser reloads
   useEffect(() => {
@@ -262,6 +205,9 @@ export default function LearningInterface() {
   const [isActive,           setIsActive]           = useState(true); // Active immediately!
   const [currentTopicIndex,  setCurrentTopicIndex]  = useState(0);
   const [currentTier,        setCurrentTier]        = useState('tier3'); // Start at Standard
+  const [suggestion,         setSuggestion]         = useState(null);
+  const [suggestionClosing,  setSuggestionClosing]  = useState(false);
+  const [tierConfirmation,   setTierConfirmation]   = useState('');
   const [elapsedSeconds,     setElapsedSeconds]     = useState(0);
   const [adaptationLog,      setAdaptationLog]      = useState([]);
   const [contentFading,      setContentFading]      = useState(false);
@@ -279,6 +225,14 @@ export default function LearningInterface() {
   const contentTopRef = useRef(null);
   const elapsedRef    = useRef(0);
   const tierChangeTimeout = useRef(null);
+  const confirmationTimeout = useRef(null);
+  const suggestionCloseTimeout = useRef(null);
+  const cameraEnabledRef = useRef(false);
+  const previousStableCameraStateRef = useRef(null);
+  const pendingStateSuggestionRef = useRef(null);
+  const suggestionRef = useRef(null);
+  const suggestionCooldownUntilRef = useRef(0);
+  const approvedTierPendingRef = useRef(null);
 
   const faceActiveRef = useRef(false);
   const [cogState, setCogState] = useState(() => ({
@@ -302,30 +256,91 @@ export default function LearningInterface() {
       updateCogState(behaviorCogState(0));
     }
   }, [updateCogState]);
+  const handleCameraActive = useCallback((active) => {
+    cameraEnabledRef.current = active;
+    if (!active) {
+      previousStableCameraStateRef.current = null;
+      pendingStateSuggestionRef.current = null;
+      suggestionRef.current = null;
+      if (suggestionCloseTimeout.current) clearTimeout(suggestionCloseTimeout.current);
+      suggestionCloseTimeout.current = null;
+      setSuggestionClosing(false);
+      setSuggestion(null);
+    }
+  }, []);
   const currentTopic = topicNames[currentTopicIndex] || topicNames[0] || 'Core Principles';
-  const { signals, suggestion, requestSuggestion, dismissSuggestion, clearSuggestion } = useSignalMonitor(
-    isActive, currentTier, currentTopic, faceActiveRef, contentTopRef, cogStateRef, updateCogState,
+  const { signals } = useSignalMonitor(
+    isActive, faceActiveRef, contentTopRef, cogStateRef, updateCogState,
   );
 
   const currentTierMeta = TIER_META[currentTier];
+  const closeSuggestion = useCallback((applyCooldown = false) => {
+    if (!suggestionRef.current) return;
+    suggestionRef.current = null;
+    pendingStateSuggestionRef.current = null;
+    if (applyCooldown) suggestionCooldownUntilRef.current = Date.now() + 3 * 60 * 1000;
+    setSuggestionClosing(true);
+    if (suggestionCloseTimeout.current) clearTimeout(suggestionCloseTimeout.current);
+    suggestionCloseTimeout.current = setTimeout(() => {
+      setSuggestion(null);
+      setSuggestionClosing(false);
+      suggestionCloseTimeout.current = null;
+    }, 170);
+  }, []);
+  const confirmApprovedTier = useCallback((tier) => {
+    const pending = approvedTierPendingRef.current;
+    if (pending?.tier !== tier) return;
+    approvedTierPendingRef.current = null;
+    setTierConfirmation(`Content updated to ${pending.label}.`);
+  }, []);
+
+  useEffect(() => {
+    if (!isActive || !cameraEnabledRef.current || cogState.source !== 'camera') return;
+    if (!['flow', 'overload', 'boredom'].includes(cogState.state)) return;
+    if (cogState.sustainedState !== cogState.state || cogState.sustainedSeconds < 30) return;
+
+    const nextState = cogState.state;
+    const previousState = previousStableCameraStateRef.current;
+    if (previousState === null) {
+      previousStableCameraStateRef.current = nextState;
+      return;
+    }
+    if (previousState === nextState) return;
+
+    previousStableCameraStateRef.current = nextState;
+    if (suggestionRef.current) return;
+    const recommendation = getStateTransitionRecommendation(previousState, nextState, currentTier);
+    if (!recommendation) return;
+    if (Date.now() < suggestionCooldownUntilRef.current) return;
+    pendingStateSuggestionRef.current = recommendation;
+  }, [isActive, cogState.state, cogState.source, cogState.sustainedState, cogState.sustainedSeconds, currentTier]);
+
+  useEffect(() => {
+    if (!isActive || !cameraEnabledRef.current || isSynthesizing || suggestionRef.current || suggestionClosing) return;
+    const recommendation = pendingStateSuggestionRef.current;
+    if (!recommendation) return;
+    pendingStateSuggestionRef.current = null;
+    if (Date.now() < suggestionCooldownUntilRef.current) return;
+    suggestionRef.current = recommendation;
+    setSuggestion(recommendation);
+  }, [isActive, isSynthesizing, currentTier, suggestionClosing]);
+
+  useEffect(() => {
+    if (!tierConfirmation) return undefined;
+    confirmationTimeout.current = setTimeout(() => {
+      setTierConfirmation('');
+      confirmationTimeout.current = null;
+    }, 3200);
+    return () => {
+      if (confirmationTimeout.current) clearTimeout(confirmationTimeout.current);
+    };
+  }, [tierConfirmation]);
 
   useEffect(() => () => {
     if (tierChangeTimeout.current) clearTimeout(tierChangeTimeout.current);
+    if (confirmationTimeout.current) clearTimeout(confirmationTimeout.current);
+    if (suggestionCloseTimeout.current) clearTimeout(suggestionCloseTimeout.current);
   }, []);
-
-  const loadingDescription = useMemo(() => {
-    const t = (currentTopic || '').toLowerCase();
-    if (t.includes('phonics') || t.includes('alphabet') || t.includes('number') || t.includes('lkg') || t.includes('ukg') || t.includes('rhyme') || t.includes('letter')) {
-      return `Synthesizing playful phonics adventures, sound friends, and discovery maps for ${currentTopic}.`;
-    }
-    if (t.includes('plant') || t.includes('solar') || t.includes('water') || t.includes('nature') || t.includes('earth') || t.includes('science')) {
-      return `Exploring natural world wonders, illustrated science cycles, and core insights for ${currentTopic}.`;
-    }
-    if (t.includes('newton') || t.includes('physics') || t.includes('motion') || t.includes('gravity') || t.includes('chemistry')) {
-      return `Synthesizing empirical scientific laws, dynamic free-body schematics, and models for ${currentTopic}.`;
-    }
-    return `Building architectural blueprints, code patterns, and invariant analysis tailored to ${currentTopic}.`;
-  }, [currentTopic]);
 
   // Timer
   useEffect(() => {
@@ -372,6 +387,7 @@ export default function LearningInterface() {
       setLessonProvider('Your notes');
       setLessonError('');
       setIsSynthesizing(false);
+      confirmApprovedTier(currentTier);
       return undefined;
     }
 
@@ -384,8 +400,9 @@ export default function LearningInterface() {
       setDynamicContent(cachedLesson.content);
       setLessonProvider(cachedLesson.provider || '');
       setLessonError('');
-      setContentSource(cachedLesson.content_source || 'ollama_qwen_dynamic');
+      setContentSource(cachedLesson.content_source || 'groq_dynamic');
       setIsSynthesizing(false);
+      confirmApprovedTier(currentTier);
       return undefined;
     }
 
@@ -409,15 +426,17 @@ export default function LearningInterface() {
           setDynamicContent(data.content);
           setLessonProvider(data.provider || '');
           setLessonError('');
-          setContentSource(data.content_source || 'ollama_qwen_dynamic');
+          setContentSource(data.content_source || 'groq_dynamic');
+          confirmApprovedTier(currentTier);
         }
       } catch (err) {
         if (isCancelled || err?.name === 'AbortError') return;
         if (!isCancelled) {
           setDynamicContent(null);
           setLessonProvider('');
-          setLessonError(err?.message || 'The local model did not answer.');
+          setLessonError(err?.message || 'Groq did not answer.');
           setContentSource('error');
+          if (approvedTierPendingRef.current?.tier === currentTier) approvedTierPendingRef.current = null;
         }
       } finally {
         if (!isCancelled) setIsSynthesizing(false);
@@ -429,11 +448,16 @@ export default function LearningInterface() {
       isCancelled = true;
       controller.abort();
     };
-  }, [currentTopic, currentTier, subject, uploadedLesson, lessonRetryKey]);
+  }, [currentTopic, currentTier, subject, uploadedLesson, lessonRetryKey, confirmApprovedTier]);
 
   // Change tier with a smooth fade + real-time adaptation
   const changeTier = useCallback((newTier, reason = 'manual') => {
     if (newTier === currentTier) return;
+    pendingStateSuggestionRef.current = null;
+    if (reason !== 'state-suggestion-approved') {
+      approvedTierPendingRef.current = null;
+      if (suggestionRef.current) closeSuggestion(true);
+    }
     setContentFading(true);
     if (tierChangeTimeout.current) clearTimeout(tierChangeTimeout.current);
     tierChangeTimeout.current = setTimeout(() => {
@@ -452,7 +476,7 @@ export default function LearningInterface() {
       setContentFading(false);
       tierChangeTimeout.current = null;
     }, 240);
-  }, [currentTier, currentTopic]);
+  }, [currentTier, currentTopic, closeSuggestion]);
 
   // Manual difficulty controls
   const goSimpler = useCallback(() => {
@@ -465,25 +489,26 @@ export default function LearningInterface() {
     if (idx < TIERS.length - 1) changeTier(TIERS[idx + 1], 'manual-harder');
   }, [currentTier, changeTier]);
 
-  // Accept AI suggestion
-  const acceptSuggestion = useCallback(() => {
-    const idx = TIERS.indexOf(currentTier);
-    if (suggestion === 'simpler' && idx > 0) changeTier(TIERS[idx - 1], 'ai-suggested');
-    if (suggestion === 'harder'  && idx < TIERS.length - 1) changeTier(TIERS[idx + 1], 'ai-suggested');
-    clearSuggestion();
-  }, [currentTier, suggestion, changeTier, clearSuggestion]);
+  const dismissSuggestion = useCallback(() => {
+    closeSuggestion(true);
+  }, [closeSuggestion]);
 
-  // Hotkeys: 1/2/3 for tiers, Enter/Esc for suggestion
+  // Applying a recommendation always requires this explicit user action.
+  const acceptSuggestion = useCallback(() => {
+    const recommendation = suggestionRef.current;
+    if (!recommendation) return;
+    closeSuggestion(false);
+    if (recommendation.tier === currentTier) return;
+    approvedTierPendingRef.current = { tier: recommendation.tier, label: recommendation.tierLabel };
+    changeTier(recommendation.tier, 'state-suggestion-approved');
+  }, [currentTier, changeTier, closeSuggestion]);
+
+  // Hotkeys: 1/2/3 select tiers; Escape dismisses a recommendation.
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
 
       if (suggestion) {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          acceptSuggestion();
-          return;
-        }
         if (e.key === 'Escape') {
           e.preventDefault();
           dismissSuggestion();
@@ -567,72 +592,46 @@ export default function LearningInterface() {
       {/* ── AI Suggestion Toast (Glassmorphic Slide-in) ── */}
       {suggestion && (
         <div
-          className="animate-fadeIn"
-          style={{
-            position: 'fixed', bottom: 32, right: 32, zIndex: 500,
-            background: 'var(--bg-card)',
-            border: `1px solid ${suggestion === 'simpler' ? 'rgba(244,63,94,0.45)' : 'rgba(245,158,11,0.45)'}`,
-            borderRadius: 'var(--radius-xl)', padding: '20px 22px', maxWidth: 360,
-            boxShadow: '0 16px 48px rgba(0,0,0,0.6), 0 0 30px rgba(99,102,241,0.15)',
-            backdropFilter: 'blur(24px)',
-          }}
+          id="state-recommendation-popup"
+          className={`state-recommendation${suggestionClosing ? ' is-closing' : ''}`}
+          role="dialog"
+          aria-modal="false"
+          aria-labelledby="state-recommendation-title"
         >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <div style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase',
-              color: suggestion === 'simpler' ? '#fda4af' : '#fcd34d'
-            }}>
-              <Brain size={14} />
-              AI Cognitive Adaptation
-            </div>
-            <span style={{ fontSize: 10, color: 'var(--text-muted)', background: 'rgba(255,255,255,0.06)', padding: '2px 6px', borderRadius: 4 }}>
-              Active
-            </span>
-          </div>
-
-          <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 16 }}>
-            {suggestion === 'simpler'
-              ? 'Elevated cognitive load detected. Transitioning to visual analogies and intuitive models?'
-              : 'High comprehension pace detected. Ready to step up to staff-level engineering and invariants?'
-            }
-          </p>
-
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div className="state-recommendation__topline">
+            <span className="state-recommendation__eyebrow"><Brain size={14} /> Learning state changed</span>
             <button
-              id="suggestion-accept-btn"
-              onClick={acceptSuggestion}
-              style={{
-                flex: 1, padding: '9px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 12,
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                background: suggestion === 'simpler' ? 'linear-gradient(135deg, #f43f5e, #e11d48)' : 'linear-gradient(135deg, #f59e0b, #d97706)',
-                color: '#fff',
-                boxShadow: suggestion === 'simpler' ? '0 4px 14px rgba(244,63,94,0.35)' : '0 4px 14px rgba(245,158,11,0.35)',
-                transition: 'var(--transition)'
-              }}
-            >
-              <Check size={14} />
-              {suggestion === 'simpler' ? 'Simplify Tier' : 'Step Up Tier'}
-              <span style={{ fontSize: 10, opacity: 0.8, marginLeft: 2, background: 'rgba(0,0,0,0.2)', padding: '1px 5px', borderRadius: 4 }}>Enter</span>
-            </button>
-            <button
-              id="suggestion-dismiss-btn"
+              id="state-recommendation-close"
+              className="state-recommendation__close"
+              type="button"
+              aria-label="Dismiss recommendation"
+              disabled={suggestionClosing}
               onClick={dismissSuggestion}
-              style={{
-                padding: '9px 14px', borderRadius: 8, border: '1px solid var(--border)',
-                background: 'rgba(255,255,255,0.04)', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 12, fontWeight: 600,
-                display: 'flex', alignItems: 'center', gap: 4,
-                transition: 'var(--transition)'
-              }}
-            >
-              <X size={14} />
-              Stay
-              <span style={{ fontSize: 10, opacity: 0.7, background: 'rgba(255,255,255,0.08)', padding: '1px 4px', borderRadius: 4 }}>Esc</span>
+            ><X size={16} /></button>
+          </div>
+          <h2 id="state-recommendation-title" className="state-recommendation__title">{suggestion.title}</h2>
+          <p className="state-recommendation__message">{suggestion.message}</p>
+          <div className="state-recommendation__context">
+            <span>Detected <strong>{STATE_NAMES[suggestion.toState]}</strong></span>
+            <span aria-hidden="true">→</span>
+            <span>Suggested <strong>{suggestion.tierLabel}</strong></span>
+          </div>
+          <div className="state-recommendation__actions">
+            <button id="state-recommendation-accept" className="state-recommendation__accept" type="button" disabled={suggestionClosing} onClick={acceptSuggestion}>
+              <Check size={14} /> Switch to {suggestion.tierLabel}
+            </button>
+            <button id="state-recommendation-dismiss" className="state-recommendation__dismiss" type="button" disabled={suggestionClosing} onClick={dismissSuggestion}>
+              Keep Current Content
             </button>
           </div>
         </div>
       )}
 
+      {tierConfirmation && (
+        <div className="tier-confirmation" role="status" aria-live="polite">
+          <CheckCircle2 size={16} /> {tierConfirmation}
+        </div>
+      )}
       {/* ── Main Layout Canvas ── */}
       <div
         className="content-area"
@@ -974,8 +973,8 @@ export default function LearningInterface() {
               <WebcamMonitor
                 cogState={cogState}
                 onStateUpdate={updateCogState}
-                onTriggerSuggestion={requestSuggestion}
                 onFaceActive={handleFaceActive}
+                onCameraActive={handleCameraActive}
               />
             </div>
 

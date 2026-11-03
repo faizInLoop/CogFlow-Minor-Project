@@ -8,7 +8,7 @@ const MAX_CACHED_LESSONS = 30;
 const lessonCache = new Map();
 
 function lessonCacheId({ subject = 'General study', topic, tier = 'tier3' }) {
-  return `${subject}|${topic}|${tier}`;
+  return `v2|${subject}|${topic}|${tier}`;
 }
 
 function rememberLesson(key, lesson) {
@@ -203,7 +203,7 @@ export async function streamDynamicContent({ subject = 'General study', topic, s
       if (msg.type === 'error') throw new Error(msg.message || 'The lesson could not be written.');
     }
   }
-  if (!latest?.content) throw new Error('The local model returned an empty lesson.');
+  if (!latest?.content) throw new Error('Groq returned an empty lesson.');
   storeCachedDynamicContent(key, latest);
   return latest;
 }

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import { SUBJECTS } from '../data/subjects';
@@ -6,18 +6,12 @@ import { sounds } from '../utils/soundEffects';
 import { 
   ArrowLeft, 
   UploadCloud, 
-  FileText, 
   Loader2, 
-  Clock, 
   Play, 
   Check, 
   ChevronDown, 
   Sparkles,
-  Layers,
-  X,
   Zap,
-  CheckCircle2,
-  ListPlus
 } from 'lucide-react';
 
 export default function TopicSelection() {
@@ -26,7 +20,7 @@ export default function TopicSelection() {
   const subjectId = searchParams.get('subject');
   const isUpload = searchParams.get('source') === 'upload';
 
-    const location = useLocation();
+  const location = useLocation();
   const customSubj = location.state?.customSubject;
   const subject = customSubj || SUBJECTS.find(s => s.id === subjectId) || (!isUpload ? SUBJECTS[0] : null);
 
@@ -42,14 +36,21 @@ export default function TopicSelection() {
   const [synthesizeStatus, setSynthesizeStatus] = useState('');
   const fileInputRef = useRef();
 
-  const topics = isUpload ? extractedTopics : [...(subject?.topics || []), ...customTopicsList];
+  const topics = useMemo(() => isUpload ? extractedTopics : [...(subject?.topics || []), ...customTopicsList], [isUpload, extractedTopics, subject?.topics, customTopicsList]);
+  const initialSelectionDoneRef = useRef(false);
+
+  useEffect(() => {
+    initialSelectionDoneRef.current = false;
+  }, [subjectId]);
 
   // Auto-select initial 3 topics on first load
   useEffect(() => {
-    if (topics.length > 0 && selectedTopics.length === 0) {
+    if (initialSelectionDoneRef.current || topics.length === 0) return;
+    initialSelectionDoneRef.current = true;
+    if (selectedTopics.length === 0) {
       setSelectedTopics(topics.slice(0, Math.min(3, topics.length)).map(t => t.id));
     }
-  }, [subjectId, topics.length]);
+  }, [subjectId, topics, selectedTopics.length]);
 
   const toggleTopic = (topicId) => {
     sounds.playClick();
@@ -111,7 +112,7 @@ export default function TopicSelection() {
     const topicText = customTopicInput.trim();
     if (!topicText) return;
     setIsSynthesizing(true);
-    setSynthesizeStatus(`“${topicText}” will be written from the local model when you open the session.`);
+    setSynthesizeStatus(`“${topicText}” will be written with Groq when you open the session.`);
 
     const newModule = {
       id: `custom-${topicText.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${Date.now()}`,

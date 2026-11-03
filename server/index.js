@@ -39,6 +39,16 @@ app.use((error, _req, res, _next) => {
 
 const db = await connectDb();
 await seedDefaultUser();
-app.listen(port, '127.0.0.1', () => {
+const server = app.listen(port, '127.0.0.1', () => {
   console.log(`[CogFlow] MERN API on http://127.0.0.1:${port} (database: ${db.mode})`);
+});
+
+server.on('error', (error) => {
+  if (error.code === 'EADDRINUSE') {
+    console.error(`[CogFlow] Port ${port} is already in use. Stop the existing CogFlow process or use a different PORT.`);
+    process.exitCode = 1;
+    return;
+  }
+  console.error('[CogFlow] API server failed to start:', error);
+  process.exitCode = 1;
 });

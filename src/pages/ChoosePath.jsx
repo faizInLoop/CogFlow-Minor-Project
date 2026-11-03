@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import SpotlightCard from '../components/SpotlightCard';
 import { sounds } from '../utils/soundEffects';
-import { BookOpen, UploadCloud, ArrowRight, ShieldCheck, Layers, Sparkles, Terminal, Cpu, Zap, GraduationCap } from 'lucide-react';
+import { UploadCloud, ArrowRight, ShieldCheck, Zap, GraduationCap } from 'lucide-react';
 
 export default function ChoosePath() {
   const navigate = useNavigate();

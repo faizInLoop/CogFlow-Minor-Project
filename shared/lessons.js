@@ -886,5 +886,5 @@ export function authoredLesson(topic, tier = 'tier3') {
   const course = COURSES.find((item) => item.names.includes(key))
     || COURSES.find((item) => item.names.some((name) => name.length >= 12 && (key.includes(name) || name.includes(key))));
   if (!course) return null;
-  return course[tier] || course.tier3;
+  return course[tier] || null;
 }

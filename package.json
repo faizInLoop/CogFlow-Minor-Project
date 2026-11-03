@@ -11,6 +11,7 @@
     "models": "node server/ml/copyFaceModels.js && node server/ml/train.js",
     "build": "vite build",
     "lint": "oxlint",
+    "test": "node --test server/groq.test.js src/ml/stateRecommendations.test.js src/services/api.test.js",
     "preview": "vite preview"
   },
   "dependencies": {

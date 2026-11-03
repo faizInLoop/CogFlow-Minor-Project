@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Activity, Zap, Cpu, Sparkles } from 'lucide-react';
+import { Activity } from 'lucide-react';
 import { sounds } from '../utils/soundEffects';
 
 const BANDS = {
@@ -52,7 +52,6 @@ const BANDS = {
 export default function NeuralWaveform({ defaultBand = 'alpha' }) {
   const [activeBand, setActiveBand] = useState(defaultBand);
   const [fps, setFps] = useState(60);
-  const [amplitude, setAmplitude] = useState(72.4);
   const canvasRef = useRef(null);
   const bandRef = useRef(BANDS[defaultBand]);
 
@@ -145,7 +144,6 @@ export default function NeuralWaveform({ defaultBand = 'alpha' }) {
   const selectBand = (key) => {
     sounds.playClick();
     setActiveBand(key);
-    setAmplitude(Number((Math.random() * 20 + 60).toFixed(1)));
   };
 
   const curr = BANDS[activeBand];

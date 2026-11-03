@@ -2,11 +2,10 @@ import { useState, useEffect } from 'react';
 import { generateDynamicQuiz, evaluateStudentAnswer } from '../services/api';
 import { findCuratedQuiz } from '../data/quizBank';
 import {
-  Sparkles, CheckCircle2, XCircle, AlertCircle, HelpCircle,
-  Brain, Send, Loader2, Award, ArrowRight, RefreshCw, PenTool, Lightbulb, Check, ChevronDown, ChevronUp
+  Sparkles, CheckCircle2, XCircle, Brain, Send, Loader2, Award, Lightbulb
 } from 'lucide-react';
 
-// Saved question banks stay as written. Other topics wait for the local model.
+// Saved question banks stay as written. Other topics wait for Groq.
 function savedQuiz(topic) {
   return findCuratedQuiz(topic);
 }
@@ -16,7 +15,6 @@ export default function TopicAssessment({
   subtopicName = null,
   tier = 'tier3',
   lessonText = '',
-  cognitiveLoad = 50.0,
   onAssessmentComplete = () => {},
   initialResults = null
 }) {
@@ -39,16 +37,18 @@ export default function TopicAssessment({
   };
   const currentBadge = tierBadges[tier] || tierBadges.tier3;
 
-  // Instant quiz loading (0ms) + background AI dynamic quiz upgrade
+  // Restore this topic's saved responses when its topic or saved result changes.
   useEffect(() => {
-    let isCancelled = false;
-
-    // Reset user responses for new topic
     setSelectedAnswers(initialResults?.selectedAnswers || {});
     setShowExplanations(initialResults?.showExplanations || {});
     setStudentAnswer(initialResults?.studentAnswer || '');
     setAiEvaluation(initialResults?.aiEvaluation || null);
     setAssessmentCompleted(!!initialResults?.completed);
+  }, [topicName, initialResults?.selectedAnswers, initialResults?.showExplanations, initialResults?.studentAnswer, initialResults?.aiEvaluation, initialResults?.completed]);
+
+  // Instant quiz loading (0ms) + background AI dynamic quiz upgrade
+  useEffect(() => {
+    let isCancelled = false;
 
     const saved = savedQuiz(topicName);
     if (saved) {
@@ -89,7 +89,7 @@ export default function TopicAssessment({
       } catch (err) {
         if (isCancelled || err?.name === 'AbortError') return;
         if (!isCancelled) {
-          setQuizError(err?.message || 'The local model did not write questions for this topic.');
+          setQuizError(err?.message || 'Groq did not write questions for this topic.');
           setLoadingQuiz(false);
         }
       }
@@ -102,7 +102,7 @@ export default function TopicAssessment({
     };
   }, [topicName, subtopicName, tier, lessonText]);
 
-  const handleSelectOption = (qId, optionIdx, correctIdx) => {
+  const handleSelectOption = (qId, optionIdx) => {
     if (selectedAnswers[qId] !== undefined) return; // Locked once answered
     setSelectedAnswers(prev => ({ ...prev, [qId]: optionIdx }));
     setShowExplanations(prev => ({ ...prev, [qId]: true }));
@@ -141,7 +141,7 @@ export default function TopicAssessment({
         strengths: '',
         key_points_covered: [],
         missing_or_misunderstood: [],
-        constructive_feedback: err?.message || 'The answer could not be checked against the topic. Make sure Ollama is running, then try again.',
+        constructive_feedback: err?.message || 'The answer could not be checked against the topic. Check your Groq API keys, then try again.',
       });
     } finally {
       setIsEvaluating(false);
@@ -183,8 +183,6 @@ export default function TopicAssessment({
 
   const mcqs = quizData?.mcqs || [];
   const answeredMCQsCount = Object.keys(selectedAnswers).length;
-  const mcqsComplete = answeredMCQsCount === mcqs.length && mcqs.length > 0;
-
   return (
     <div style={{
       marginTop: 28,
@@ -345,7 +343,7 @@ export default function TopicAssessment({
                           <button
                             key={optIdx}
                             disabled={hasAnswered}
-                            onClick={() => handleSelectOption(q.id, optIdx, q.correctIndex)}
+                            onClick={() => handleSelectOption(q.id, optIdx)}
                             style={{
                               all: 'unset',
                               cursor: hasAnswered ? 'default' : 'pointer',

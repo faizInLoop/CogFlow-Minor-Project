@@ -548,7 +548,7 @@ export const QUIZ_BANK = {
 
 /**
  * A saved quiz is used only when the topic name actually matches a bank entry.
- * Unknown topics return null so the local model can write questions for that topic.
+ * Unknown topics return null so Groq can write questions for that topic.
  */
 export function findCuratedQuiz(topicName) {
   if (!topicName) return null;

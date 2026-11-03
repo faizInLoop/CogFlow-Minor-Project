@@ -400,13 +400,13 @@ Imagine you are playing Tic-Tac-Toe, Checkers, or Chess against a computer. **${
 │                        MINIMAX GAME TREE PREDICTION                    │
 │                                                                        │
 │                      [ AI Turn: MAX ] (Pick Highest)                   │
-│                     /                \                                 │
+│                     /                                                 │
 │          [ Opponent: MIN ]       [ Opponent: MIN ] (Pick Lowest)       │
-│           /            \          /            \                       │
+│           /                      /                                   │
 │       Leaf: +10     Leaf: -5   Leaf: +3     Leaf: +7                   │
-│           \            /          \            /                       │
+│                       /                      /                       │
 │            min(10,-5) = -5         min(3,7) = 3                        │
-│                     \                /                                 │
+│                                     /                                 │
 │                      max(-5, 3) = Move Right! 🏆                       │
 └────────────────────────────────────────────────────────────────────────┘
 \`\`\`
@@ -425,18 +425,18 @@ Imagine you are playing Tic-Tac-Toe, Checkers, or Chess against a computer. **${
 
 ### 1. Theoretical Foundations & Game-Theoretic Axioms
 **${topic}** is a recursive decision-rule formulation designed for finite, zero-sum, two-player perfect-information games (Γ = ⟨N, S, A, T, u⟩).
-- **Zero-Sum Equilibrium**: Player utilities satisfy $u_1(s) + u_2(s) = 0 \implies u_2(s) = -u_1(s)$.
+- **Zero-Sum Equilibrium**: Player utilities satisfy $u_1(s) + u_2(s) = 0 implies u_2(s) = -u_1(s)$.
 - **Value Recurrence Relation**:
-  $$V(s) = \begin{cases} u(s) & \text{if Terminal}(s) \\ \max_{a \in A(s)} V(T(s, a)) & \text{if Player}(s) = \text{MAX} \\ \min_{a \in A(s)} V(T(s, a)) & \text{if Player}(s) = \text{MIN} \end{cases}$$
+  $$V(s) = \begin{cases} u(s) & \text{if Terminal}(s) \\ max_{a in A(s)} V(T(s, a)) & \text{if Player}(s) = \text{MAX} \\ min_{a in A(s)} V(T(s, a)) & \text{if Player}(s) = \text{MIN} end{cases}$$
 
 \`\`\`text
 ┌────────────────────────────────────────────────────────────────────────┐
 │               ADVERSARIAL TREE WITH ALPHA-BETA BRANCH CUTOFF           │
 │                                                                        │
 │                       [ MAX: α=-∞, β=+∞ ]                              │
-│                      /                   \                             │
+│                      /                                                │
 │          [ MIN: α=-∞, β=3 ]           [ MIN: α=3, β=+∞ ]               │
-│           /              \             /               \               │
+│           /                           /                              │
 │       Node: 3          Node: 5      Node: 2         [ PRUNED! ]        │
 │    (Return: 3)                       (2 <= α=3 ──► Beta Cutoff!)       │
 └────────────────────────────────────────────────────────────────────────┘
@@ -444,9 +444,9 @@ Imagine you are playing Tic-Tac-Toe, Checkers, or Chess against a computer. **${
 
 ### 2. Alpha-Beta Pruning Invariant
 Alpha-Beta pruning dynamically maintains two scalar bounds along the search path:
-- $\alpha$: Highest utility guaranteed to MAX so far (lower bound).
+- $alpha$: Highest utility guaranteed to MAX so far (lower bound).
 - $\beta$: Lowest utility guaranteed to MIN so far (upper bound).
-- **Pruning Invariant**: If at any state $\alpha \ge \beta$, the current subtree cannot influence the optimal decision at the root and is immediately pruned without evaluation.
+- **Pruning Invariant**: If at any state $alpha ge \beta$, the current subtree cannot influence the optimal decision at the root and is immediately pruned without evaluation.
 
 ### 3. Asymptotic Complexity Bounds
 | Dimension | Unpruned Minimax | Optimal Alpha-Beta | Space Complexity |
@@ -564,8 +564,8 @@ def minimax(node, depth, is_max_turn):
 \`\`\`
 
 ### 2. The Core Relaxation Invariant
-For any directed edge $(u, v) \in E$ with weight $w(u, v) \ge 0$:
-$$\text{dist}[v] = \min(\text{dist}[v], \text{dist}[u] + w(u, v))$$
+For any directed edge $(u, v) in E$ with weight $w(u, v) ge 0$:
+$$\text{dist}[v] = min(\text{dist}[v], \text{dist}[u] + w(u, v))$$
 - **Greedy Choice Property**: At each step, extract the unsettled node with minimal tentative distance.
 - **Optimal Substructure**: A subpath of a shortest path between two vertices is itself a shortest path.
 
@@ -624,7 +624,7 @@ def dijkstra(graph, start):
 
 ### 2. The Bellman Recurrence Equation
 For state vector $S$ with decision variable $a$:
-$$V(s) = \max_{a} \{ R(s, a) + \gamma V(T(s, a)) \}$$
+$$V(s) = max_{a} { R(s, a) + gamma V(T(s, a)) }$$
 - **Top-Down with Memoization**: Recursion with hash table cache — avoids computing identical subtrees.
 - **Bottom-Up Tabulation**: Iterative table filling from base cases — eliminates recursion stack overhead and achieves spatial cache locality.
 

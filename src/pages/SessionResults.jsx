@@ -5,7 +5,7 @@ import confetti from 'canvas-confetti';
 import { sounds } from '../utils/soundEffects';
 import {
   Clock, Target, Shuffle, BookOpen, Award, Sparkles, CheckCircle2,
-  BarChart2, ArrowRight, RotateCcw, User, Home, Activity, TrendingUp, TrendingDown
+  BarChart2, RotateCcw, User, Home, Activity
 } from 'lucide-react';
 
 const TIER_COLORS = {
@@ -23,6 +23,8 @@ const REASON_LABELS = {
   'shortcut-key':   'Hotkey Switch',
 };
 
+const EMPTY_ADAPTATION_LOG = Object.freeze([]);
+
 export default function SessionResults() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -36,9 +38,8 @@ export default function SessionResults() {
   const navState = location.state || {};
   const subject = navState.subject || stored.subject || 'Computer Systems & OS Architecture';
   const topicNames = navState.topicNames || stored.topicNames || ['Foundational Architecture & Memory Hierarchy'];
-  const adaptationLog = navState.adaptationLog || stored.adaptationLog || [];
+  const adaptationLog = navState.adaptationLog || stored.adaptationLog || EMPTY_ADAPTATION_LOG;
   const totalSeconds = navState.totalSeconds !== undefined ? navState.totalSeconds : (stored.totalSeconds || 120);
-  const avgLoad = navState.avgLoad !== undefined ? navState.avgLoad : (stored.avgLoad || 52);
   const topicAssessments = navState.topicAssessments || stored.topicAssessments || {};
   const avgQuizScore = navState.avgQuizScore !== undefined
     ? navState.avgQuizScore

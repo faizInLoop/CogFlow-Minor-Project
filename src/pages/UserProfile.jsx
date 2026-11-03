@@ -4,10 +4,8 @@ import { useUser } from '../context/UserContext';
 import { getSessionHistory, getUserProgress, getUserAnalytics } from '../services/api';
 import Navbar from '../components/Navbar';
 import {
-  Brain, Clock, Sparkles, BookOpen, ChevronRight, User, Settings,
-  Award, TrendingUp, RefreshCw, Calendar, CheckCircle2, ArrowLeft,
-  Edit3, Shield, Zap, Layers, PlusCircle, AlertCircle, SlidersHorizontal,
-  GraduationCap, History, Check, X
+  Brain, Clock, Sparkles, BookOpen, ChevronRight, ArrowLeft,
+  Edit3, SlidersHorizontal, GraduationCap, History, PlusCircle
 } from 'lucide-react';
 
 const TIER_COLORS = {
@@ -24,7 +22,7 @@ export default function UserProfile() {
   const [sessions, setSessions] = useState([]);
   const [progressData, setProgressData] = useState({ total_topics: 0, by_subject: {}, topics: [] });
   const [analytics, setAnalytics] = useState(null);
-  const [loadingData, setLoadingData] = useState(true);
+  const [, setLoadingData] = useState(true);
 
   // Edit profile modal state
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);

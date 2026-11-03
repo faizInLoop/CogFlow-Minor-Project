@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { lessonIsReady, lessonMessages, lessonValidationError } from './ollama.js';
+import { lessonIsReady, lessonKey, lessonMessages, lessonValidationError, repairMessages } from './groq.js';
+import { authoredLesson } from '../shared/lessons.js';
 
 const goodLesson = `## What it is
 A stack is a container that lets you add and remove items from one accessible end, called the top. Its last-in, first-out rule means the newest item is removed before older items.
@@ -13,9 +14,8 @@ Stacks are useful when a task must reverse the order in which items were receive
 The rule gives programs a clear way to save unfinished operations and resume them in reverse order. A stack is a good choice when access to older items is not needed immediately.
 
 ## One example
-Start with an empty stack, then push 5 followed by 10. The top is now 10 because it was added after 5.
-
-Calling pop returns 10 and leaves [5] as the remaining stack. The returned value confirms that removal happens at the same end used for insertion.
+Start empty, then push 5 and 10; the top is now 10 because it was added last.
+Calling pop returns 10 and leaves [5], showing that insertion and removal happen at the same end.
 
 ## A common mistake
 A stack is not a container where the oldest item is always removed first. That behavior describes a queue, which uses a different removal order.
@@ -36,9 +36,8 @@ LLMs can summarize documents, answer questions, and draft text through one flexi
 Their fluent answers can still contain mistakes because likely wording is not the same as verified fact. Important claims should be checked against reliable sources.
 
 ## One example
-A user can ask an LLM to explain how a water cycle works in simple language. The model uses the prompt's words and its learned patterns to compose an explanation.
-
-If the user asks for a shorter version, the model can generate a different response that preserves the central idea. The result depends on both the instruction and the context in the conversation.
+A user can ask an LLM to explain how a water cycle works in simple language, and the model uses the prompt and learned patterns to compose an explanation.
+If asked for a shorter version, it can preserve the central idea while changing the response; the result depends on the instruction and conversation context.
 
 ## A common mistake
 An LLM does not reason or verify every statement in the same way a person or a calculation tool can. A confident tone alone is not evidence that an answer is accurate.
@@ -49,7 +48,7 @@ It also does not necessarily remember a conversation after the session ends. Mem
 What does an LLM predict one step at a time? Why should a reader verify an important claim from its answer?`;
 
 test('accepts a complete lesson with the required sections', () => {
-  assert.equal(lessonIsReady('stack', goodLesson), true);
+  assert.equal(lessonValidationError('stack', goodLesson), null);
 });
 
 test('rejects headings deeper than level two', () => {
@@ -73,7 +72,7 @@ test('rejects the topic title repeated as a bullet', () => {
 });
 
 test('validates structure without requiring topic words to appear verbatim', () => {
-  assert.equal(lessonIsReady('expain the working of a LLM', llmLesson), true);
+  assert.equal(lessonValidationError('expain the working of a LLM', llmLesson), null);
 });
 
 test('uses the same dynamic lesson prompt for different learner requests', () => {
@@ -99,10 +98,50 @@ test('uses the same dynamic lesson prompt for different learner requests', () =>
   );
 });
 
+test('uses materially different tier instructions and separate refreshed cache keys', () => {
+  const topic = 'Explain how a stack data structure works';
+  const prompts = Object.fromEntries(['tier1', 'tier3', 'tier5'].map((tier) => [tier, lessonMessages({
+    subject: 'Computer Science', topic, tier, angle: 'default',
+  })[1].content]));
+
+  assert.match(prompts.tier1, /SIMPLIFIED/);
+  assert.match(prompts.tier1, /beginner-friendly/);
+  assert.match(prompts.tier1, /short sentences/);
+  assert.match(prompts.tier1, /fundamentals/);
+  assert.match(prompts.tier3, /STANDARD/);
+  assert.match(prompts.tier3, /technical terms/);
+  assert.match(prompts.tier3, /moderate depth/);
+  assert.match(prompts.tier5, /EXPERT/);
+  assert.match(prompts.tier5, /internal operation/);
+  assert.match(prompts.tier5, /edge cases, limitations, trade-offs, or complexity/);
+  assert.notEqual(prompts.tier1, prompts.tier3);
+  assert.notEqual(prompts.tier3, prompts.tier5);
+
+  const keys = ['tier1', 'tier3', 'tier5'].map((tier) => lessonKey({ topic, tier, angle: 'default' }));
+  assert.equal(new Set(keys).size, 3);
+  assert.ok(keys.every((key) => key.startsWith('lesson|v9|')));
+});
+
+test('preserves the selected tier when a lesson draft needs repair', () => {
+  const draft = 'A short draft that missed the lesson structure.';
+  const simplifiedRepair = repairMessages('Explain stacks', 'tier1', 'default', draft, 'Missing headings.')[1].content;
+  const expertRepair = repairMessages('Explain stacks', 'tier5', 'default', draft, 'Missing headings.')[1].content;
+
+  assert.match(simplifiedRepair, /SIMPLIFIED/);
+  assert.match(simplifiedRepair, /beginner-friendly/);
+  assert.match(expertRepair, /EXPERT/);
+  assert.match(expertRepair, /internal operation/);
+  assert.notEqual(simplifiedRepair, expertRepair);
+});
+
+test('does not substitute Standard authored content for an unavailable tier', () => {
+  assert.equal(authoredLesson('minimax', 'tier_unknown'), null);
+});
+
 test('explains which section failed validation', () => {
   const lesson = goodLesson.replace(
     /## What it is[\s\S]*?\n\n## Why it matters/,
-    '## What it is\nA stack is a container.\n\n## Why it matters',
+    '## What it is\n\n## Why it matters',
   );
-  assert.match(lessonValidationError('stack', lesson), /What it is must contain 2–4 complete sentences/);
+  assert.match(lessonValidationError('stack', lesson), /What it is must contain 1–4 complete sentences/);
 });

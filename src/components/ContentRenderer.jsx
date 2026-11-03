@@ -1,6 +1,6 @@
-import { memo, useEffect, useMemo, useState } from 'react';
-import { AlertCircle, Check, ChevronRight, ChevronDown, ChevronUp, Copy, RefreshCw, Sparkles, Brain, Lightbulb, HelpCircle, CheckCircle2, Award, BookOpen, Layers, Zap, AlertTriangle, ShieldCheck } from 'lucide-react';
-import { codeForTopic, topicCanHaveCode } from '../data/topicCode';
+import { memo, useMemo, useState } from 'react';
+import { AlertCircle, Check, ChevronRight, Copy, RefreshCw, Sparkles, Brain, Lightbulb, CheckCircle2, BookOpen, Layers, Zap, AlertTriangle } from 'lucide-react';
+import { codeForTopic } from '../data/topicCode';
 
 // ============================================================
 // ContentRenderer — Displays Educational Content & Visual Diagrams
@@ -20,12 +20,12 @@ const TIER_META = {
 function cleanLatex(str) {
   if (typeof str !== 'string') return str;
   return str
-    .replace(/\$\$\mathcal\{O\}\((.*?)\)\$\$/g, 'O($1)')
-    .replace(/\$\mathcal\{O\}\((.*?)\)\$/g, 'O($1)')
+    .replace(/\$\$mathcal\{O\}\((.*?)\)\$\$/g, 'O($1)')
+    .replace(/\$mathcal\{O\}\((.*?)\)\$/g, 'O($1)')
     .replace(/\\mathcal\{O\}\((.*?)\)/g, 'O($1)')
-    .replace(/\$\mathcal\{O\}\$/g, 'O')
+    .replace(/\$mathcal\{O\}\$/g, 'O')
     .replace(/\\mathcal\{O\}/g, 'O')
-    .replace(/\$\log N\$/g, 'log N')
+    .replace(/\$log N\$/g, 'log N')
     .replace(/\\log N/g, 'log N')
     .replace(/\\log_2 N/g, 'log₂ N')
     .replace(/\\Omega\((.*?)\)/g, 'Ω($1)')
@@ -147,6 +147,34 @@ export function triggerFileDownload(filename, content, mimeType = 'text/plain') 
 // ─────────────────────────────────────────────────────────────
 // Code Block with Syntax Highlighting & Copy
 // ─────────────────────────────────────────────────────────────
+const CODE_KEYWORDS = new Set([
+  'async', 'await', 'break', 'case', 'catch', 'class', 'const', 'continue', 'def', 'else', 'elif',
+  'export', 'extends', 'false', 'finally', 'for', 'from', 'function', 'if', 'import', 'in',
+  'let', 'new', 'null', 'of', 'pass', 'print', 'raise', 'return', 'self', 'static', 'this',
+  'throw', 'true', 'try', 'undefined', 'var', 'while', 'with', 'yield',
+]);
+
+function highlightCode(code) {
+  const pattern = /(\/\/[^\n]*|\/\*[\s\S]*?\*\/|#[^\n]*|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\x60(?:\\.|[^\x60\\])*\x60|\b\d+(?:\.\d+)?\b|\b(?:async|await|break|case|catch|class|const|continue|def|else|elif|export|extends|false|finally|for|from|function|if|import|in|let|new|null|of|pass|print|raise|return|self|static|this|throw|true|try|undefined|var|while|with|yield)\b)/gm;
+  const highlighted = [];
+  let previousIndex = 0;
+  let match = pattern.exec(code);
+  while (match) {
+    if (match.index > previousIndex) highlighted.push(code.slice(previousIndex, match.index));
+    const token = match[0];
+    let tokenClass = 'generated-code-token--keyword';
+    if (token.startsWith('//') || token.startsWith('/*') || token.startsWith('#')) tokenClass = 'generated-code-token--comment';
+    else if (/^["'\x60]/.test(token)) tokenClass = 'generated-code-token--string';
+    else if (/^\d/.test(token)) tokenClass = 'generated-code-token--number';
+    else if (!CODE_KEYWORDS.has(token)) tokenClass = '';
+    highlighted.push(tokenClass ? <span key={`${match.index}-${token}`} className={tokenClass}>{token}</span> : token);
+    previousIndex = pattern.lastIndex;
+    match = pattern.exec(code);
+  }
+  if (previousIndex < code.length) highlighted.push(code.slice(previousIndex));
+  return highlighted;
+}
+
 function CodeBlock({ code, lang = '' }) {
   const [copied, setCopied] = useState(false);
 
@@ -161,8 +189,8 @@ function CodeBlock({ code, lang = '' }) {
       margin: '18px 0',
       borderRadius: 12,
       overflow: 'hidden',
-      border: '1px solid var(--border)',
-      background: 'var(--bg-secondary)',
+      background: '#0b1220',
+      border: '1px solid #334155',
       boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
     }}>
       <div style={{
@@ -170,10 +198,10 @@ function CodeBlock({ code, lang = '' }) {
         alignItems: 'center',
         justifyContent: 'space-between',
         padding: '8px 16px',
-        background: 'rgba(255, 255, 255, 0.02)',
-        borderBottom: '1px solid var(--border)',
+        background: 'rgba(148, 163, 184, 0.08)',
+        borderBottom: '1px solid #334155',
         fontSize: 11.5,
-        color: 'var(--text-muted)',
+        color: '#cbd5e1',
         fontFamily: "'JetBrains Mono', monospace",
       }}>
         <span>{lang || 'code'}</span>
@@ -204,7 +232,7 @@ function CodeBlock({ code, lang = '' }) {
         fontFamily: "'JetBrains Mono', monospace",
         color: '#e2e8f0',
       }}>
-        <code>{code}</code>
+        <code>{highlightCode(code)}</code>
       </pre>
     </div>
   );
@@ -523,14 +551,6 @@ function lessonTextKey(text) {
   return text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 }
 
-const SECTION_LABEL = {
-  'What it is': 'What it is',
-  'Why it matters': 'Why it matters',
-  'One example': 'Example',
-  'A common mistake': 'Common mistake',
-};
-
-
 // ============================================================
 // Teacher Knowledge & Comprehensive Curated Answer Repository
 // Covers Early Childhood, Primary, STEM, CS, Systems, and AI.
@@ -751,7 +771,6 @@ const SECTION_META = {
 
 // Generates pedagogical deep dive points even for compact raw lessons
 function buildDeepDiveBreakdown(heading, sentences, topic = '') {
-  const t = topic.toLowerCase();
   const cleanSentences = sentences.filter(Boolean);
 
   if (heading === 'What it is') {
@@ -811,7 +830,7 @@ function parseLessonPointers(content, topic = '') {
       const rawLines = qText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
       const extracted = [];
       for (const line of rawLines) {
-        const cleaned = line.replace(/^\s*(?:\d+[\.\)]|[-*+])\s*/, '').trim();
+        const cleaned = line.replace(/^\s*(?:\d+[.)]|[-*+])\s*/, '').trim();
         if (!cleaned) continue;
         const sentences = splitSentences(cleaned);
         for (const s of sentences) {
@@ -1182,7 +1201,7 @@ function TeacherLessonOverview({ points, checkQuestions, topic }) {
 
       {/* Main Concept Cards with Progressive Disclosure Arrow */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {points.map((pt, idx) => {
+        {points.map((pt) => {
           const Icon = pt.icon;
           const isExpanded = expandedIds.has(pt.id);
 
@@ -1678,7 +1697,7 @@ function LessonFlow({ points }) {
 
 function fencesIn(content) {
   const blocks = [];
-  const pattern = /\`\`\`([a-zA-Z0-9]*)\n([\s\S]*?)\`\`\`/g;
+  const pattern = /```([a-zA-Z0-9]*)\n([\s\S]*?)```/g;
   let match = pattern.exec(content);
   while (match) {
     const code = match[2].trim();
@@ -1690,9 +1709,10 @@ function fencesIn(content) {
 
 function CodeView({ topic, content }) {
   const saved = codeForTopic(topic);
-  const blocks = saved
-    ? [{ label: saved.label, code: saved.code }]
-    : (topicCanHaveCode(topic) ? fencesIn(content) : []);
+  const generatedBlocks = fencesIn(content);
+  const blocks = generatedBlocks.length > 0
+    ? generatedBlocks
+    : (saved ? [{ label: saved.label, code: saved.code }] : []);
   if (blocks.length === 0) {
     return (
       <p style={{ margin: 0, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
@@ -1701,35 +1721,9 @@ function CodeView({ topic, content }) {
     );
   }
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div className="generated-code-view" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {blocks.map((block) => (
-        <pre key={block.code} style={{
-          margin: 0,
-          padding: '16px 18px',
-          borderRadius: 12,
-          overflowX: 'auto',
-          background: 'rgba(0,0,0,0.28)',
-          border: '1px solid var(--border)',
-          color: '#e2e8f0',
-          fontSize: 13,
-          lineHeight: 1.6,
-          fontFamily: "'JetBrains Mono', ui-monospace, monospace",
-        }}
-        >
-          <div style={{
-            marginBottom: 8,
-            fontSize: 10,
-            fontWeight: 800,
-            letterSpacing: '0.08em',
-            textTransform: 'uppercase',
-            color: '#a5b4fc',
-            fontFamily: 'inherit',
-          }}
-          >
-            {block.label}
-          </div>
-          {block.code}
-        </pre>
+        <CodeBlock key={`${block.label}-${block.code}`} code={block.code} lang={block.label} />
       ))}
     </div>
   );
@@ -1759,14 +1753,10 @@ function ContentRenderer({
 
   const sourceLabel = contentSource === 'course_notes'
     ? 'Course notes'
-    : contentSource === 'ollama_qwen_dynamic'
-      ? 'Checked lesson · Ollama'
-      : contentSource === 'groq_dynamic'
-        ? `Checked lesson · ${contentProvider || 'Groq'}`
-        : contentSource === 'openrouter_dynamic'
-          ? 'Checked lesson · OpenRouter'
-          : contentSource === 'cached_checked_lesson'
-            ? 'Checked lesson · cached'
+    : contentSource === 'groq_dynamic'
+      ? `Checked lesson · ${contentProvider || 'Groq'}`
+      : contentSource === 'cached_checked_lesson'
+        ? 'Checked lesson · cached'
     : contentSource === 'uploaded_syllabus'
       ? 'From your notes'
       : contentSource === 'writing'
@@ -1865,7 +1855,7 @@ function ContentRenderer({
         )}
         {!rawContent && !lessonError && (
           <p style={{ color: 'var(--text-secondary)' }}>
-            Writing a checked note for {topic}. Overview, Visual, Code, and Notes open when it is ready. The first note may take a little longer while the local model starts.
+            Writing a checked note for {topic}. Overview, Visual, Code, and Notes open when it is ready. The first note may take a little longer while Groq responds.
           </p>
         )}
         {!lessonError && rawContent && points.length === 0 && formatContent(rawContent)}

@@ -6,9 +6,7 @@ import NeuralWaveform from '../components/NeuralWaveform';
 import BiometricPlayground from '../components/BiometricPlayground';
 import { sounds } from '../utils/soundEffects';
 import {
-  Brain, ScanFace, Cpu, Layers, Zap, BarChart3, ArrowRight,
-  Sparkles, CheckCircle2, Sliders, ShieldCheck, Terminal,
-  Activity, ChevronRight, Eye, RefreshCw, Compass, Code, Network, Award
+  Brain, ScanFace, ArrowRight, ShieldCheck, Activity, Compass, Award, Sparkles
 } from 'lucide-react';
 
 const FEATURES = [

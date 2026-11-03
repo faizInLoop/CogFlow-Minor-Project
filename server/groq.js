@@ -1,5 +1,5 @@
 /**
- * Local lesson writer. Ollama must already be running on this machine.
+ * Groq lesson writer.
  * Lessons are cached so the same topic is not generated twice.
  */
 
@@ -13,48 +13,32 @@ for (const envPath of [path.join(projectRoot, '.env'), path.join(__dirname, '.en
   if (fs.existsSync(envPath)) process.loadEnvFile(envPath);
 }
 
-const HOST = process.env.OLLAMA_HOST || 'http://127.0.0.1:11434';
-const LOCAL_MODEL = 'qwen2.5-coder:7b';
-let activeModel = LOCAL_MODEL;
+const GROQ_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
+const GROQ_MODEL = process.env.GROQ_MODEL || 'openai/gpt-oss-120b';
 
 export function getActiveModel() {
-  return LOCAL_MODEL;
-}
-
-function installedLocalModel(names) {
-  return names.find((name) => name === LOCAL_MODEL || name.startsWith(`${LOCAL_MODEL}-`)) || '';
-}
-
-export async function detectOllamaModel() {
-  activeModel = LOCAL_MODEL;
-  try {
-    const res = await fetch(`${HOST}/api/tags`, { signal: AbortSignal.timeout(2000) });
-    if (!res.ok) return activeModel;
-    const body = await res.json();
-    const names = (body.models || []).map((item) => item.name);
-    installedLocalModel(names);
-    return activeModel;
-  } catch {
-    return activeModel;
-  }
+  return GROQ_MODEL;
 }
 const cachePath = path.join(__dirname, 'data', 'lesson-cache.json');
 
 const DEPTH = {
   tier1: {
-    label: 'the easiest true explanation, in short sentences',
-    words: '160 to 220 words',
-    predict: 420,
-  },
-  tier3: {
-    label: 'a clear explanation in plain words',
-    words: '220 to 280 words',
+    label: 'SIMPLIFIED — beginner foundations for a learner who feels overloaded',
+    instructions: 'Use familiar beginner-friendly words and short sentences, preferably 8–16 words. Explain one idea at a time. Break mechanisms into small ordered steps in plain prose. Use one simple, relatable example. Avoid technical terms unless essential; define any essential term immediately. Focus on fundamentals. Simplify the wording, never the facts.',
+    words: '110 to 155 words',
     predict: 520,
   },
+  tier3: {
+    label: 'STANDARD — balanced explanation for a learner comfortable with the fundamentals',
+    instructions: 'Explain the concept, how its mechanism works, and where it is used. Use relevant technical terms and explain each in context. Include a practical example with enough detail to show why the result follows. Aim for moderate depth without specialist edge cases.',
+    words: '155 to 205 words',
+    predict: 680,
+  },
   tier5: {
-    label: 'a precise explanation in plain words, with one real limit',
-    words: '260 to 320 words',
-    predict: 560,
+    label: 'EXPERT — deeper technical treatment for a learner already comfortable with the basics',
+    instructions: 'Assume the learner knows the basic definition. Explain internal operation, implementation choices, and why they work. Use a realistic, technically challenging example. Include relevant edge cases, limitations, trade-offs, or complexity; qualify implementation-dependent details. Be substantially more technical and deeper than Standard while staying precise and on topic.',
+    words: '205 to 265 words',
+    predict: 880,
   },
 };
 
@@ -91,7 +75,7 @@ export function storeLesson(key, value) {
 }
 
 export function lessonKey({ topic, tier, angle }) {
-  return ['lesson', 'v8', topic.trim().toLowerCase(), tier, angle || 'default'].join('|');
+  return ['lesson', 'v9', topic.trim().toLowerCase(), tier, angle || 'default'].join('|');
 }
 
 export function quizKey({ topic, tier, lesson }) {
@@ -99,23 +83,13 @@ export function quizKey({ topic, tier, lesson }) {
   return ['quiz', 'v2', topic.trim().toLowerCase(), tier, anchor].join('|');
 }
 
-export async function ollamaStatus() {
-  try {
-    const res = await fetch(`${HOST}/api/tags`, { signal: AbortSignal.timeout(2000) });
-    if (!res.ok) return { online: false, model: activeModel, providers: configuredProviderNames() };
-    const body = await res.json();
-    const names = (body.models || []).map((item) => item.name);
-    activeModel = LOCAL_MODEL;
-    return {
-      online: true,
-      model: LOCAL_MODEL,
-      installed: Boolean(installedLocalModel(names)),
-      models: names,
-      providers: configuredProviderNames(),
-    };
-  } catch {
-    return { online: false, model: activeModel, installed: false, models: [], providers: configuredProviderNames() };
-  }
+export function groqStatus() {
+  const providers = configuredProviderNames();
+  return {
+    model: GROQ_MODEL,
+    configured: providers.length > 0,
+    providers,
+  };
 }
 
 function providerConfigs() {
@@ -125,35 +99,18 @@ function providerConfigs() {
     process.env.GROQ_API_KEY,
     process.env.GROQ_API_KEY_1,
     process.env.GROQ_API_KEY_2,
+    process.env.GROQ_API_KEY_3,
   ].map((key) => key?.trim()).filter(Boolean);
 
   for (const [index, key] of [...new Set(groqKeys)].entries()) {
     providers.push({
       name: `Groq key ${index + 1}`,
       kind: 'openai-compatible',
-      endpoint: 'https://api.groq.com/openai/v1/chat/completions',
-      model: process.env.GROQ_MODEL || 'qwen/qwen3.8-27b',
+      endpoint: GROQ_ENDPOINT,
+      model: GROQ_MODEL,
       key,
     });
   }
-
-  const openRouterKey = process.env.OPENROUTER_API_KEY || process.env.OPEN_ROUTER_API_KEY;
-  if (openRouterKey?.trim()) {
-    providers.push({
-      name: 'OpenRouter',
-      kind: 'openai-compatible',
-      endpoint: 'https://openrouter.ai/api/v1/chat/completions',
-      model: process.env.OPENROUTER_MODEL || 'openrouter/auto',
-      key: openRouterKey.trim(),
-    });
-  }
-
-  providers.push({
-    name: 'Ollama',
-    kind: 'ollama',
-    endpoint: `${HOST}/api/chat`,
-    model: activeModel,
-  });
 
   return providers;
 }
@@ -166,6 +123,7 @@ function lessonSentences(text) {
   return text.split(/\r?\n/)
     .map((line) => line.replace(/^\s*(?:[-*+]|\d+\.)\s+/, '').trim())
     .filter(Boolean)
+    .map((line) => line.endsWith(':') ? `${line}.` : line)
     .flatMap((line) => line.split(/(?<=[.!?])\s+(?=[A-Z0-9])/))
     .map((sentence) => sentence.trim())
     .filter(Boolean);
@@ -186,7 +144,7 @@ function lessonParts(text) {
     .map((line) => line.trim())
     .filter((line) => /^#{1,6}\s/.test(line));
   const codeHeadingAt = cleaned.search(/^## Code\s*$/m);
-  const prose = (codeHeadingAt >= 0 ? cleaned.slice(0, codeHeadingAt) : cleaned).trim();
+  const prose = (codeHeadingAt >= 0 ? withoutCodeBlocks.slice(0, codeHeadingAt) : withoutCodeBlocks).trim();
   const sections = new Map(REQUIRED_HEADINGS.map((heading) => [heading, '']));
   const lines = prose.split(/\r?\n/);
   let currentHeading = null;
@@ -225,8 +183,8 @@ export function lessonValidationError(topic, text) {
       .filter(Boolean)
       .map(normalizedLessonText);
     if (bulletLines.some((line) => line === topicKey)) return 'Lesson repeats the topic title as a bullet.';
-    if (sentences.length < 1 || sentences.length > 8) {
-      return `${heading.slice(3)} must contain 1–8 complete sentences (found ${sentences.length}).`;
+    if (sentences.length < 1 || sentences.length > 4) {
+      return `${heading.slice(3)} must contain 1–4 complete sentences (found ${sentences.length}).`;
     }
 
     for (const sentence of sentences) {
@@ -293,7 +251,8 @@ export function lessonMessages({ subject, topic, tier, angle }) {
       role: 'user',
       content: `Subject: ${subject || 'General study'}
 Topic: ${topic}
-Depth: ${depth.label}
+Requested learner tier: ${depth.label}
+Tier-specific teaching requirements: ${depth.instructions}
 ${angleNote(angle)}
 
 Write ${depth.words}. Start with exactly these five headings, in this order:
@@ -303,11 +262,11 @@ Write ${depth.words}. Start with exactly these five headings, in this order:
 ## A common mistake
 ## Check yourself
 
-Answer the exact request in "${topic}" rather than changing it to a broader topic. Under each of the first four headings, write exactly two distinct, short, complete sentences, each no longer than 35 words, and put them on separate lines. Under Check yourself, write exactly two concise questions answerable from this explanation, one per line. The lesson must have ten prose sentences before optional code; do not leave a section with only one sentence.
+Answer the exact request in "${topic}" rather than changing it to a broader topic. Under each of the first four headings, write one or two distinct, complete sentences that follow the requested tier, each no longer than 30 words, and put them on separate lines. In One example, explain at most two actions chronologically in exactly two prose sentences; do not use bullets or numbered steps. Under Check yourself, write exactly two concise questions answerable from this explanation, one per line. The explanation and example must differ substantively in depth across Simplified, Standard, and Expert; do not reuse generic filler or copy another tier's wording. The lesson must have at least five prose sentences before optional code.
 
 Name the real parts, the action each part takes, and what changes as a result; do not rely on a slogan or analogy alone. Use only the five headings above, once each, with their exact spelling. Do not use any heading deeper than ##, repeat a sentence or the topic title as a sentence or bullet, or include placeholder text.
 
-If the request asks how something works, walk through its mechanism in order. In the example, show a concrete starting state and up to three important actions, including what each action returns or changes and why. Choose a tiny, direct example that demonstrates the mechanism; avoid extra algorithms or arithmetic that are not needed. If the request asks to solve a problem, show the reasoning steps before the conclusion. The common-mistake section must correct one plausible misconception about the topic without adding unrelated uses. If you give a wrong-result example, reuse the exact setup above and state its correct result; do not introduce a second example.
+If the request asks how something works, walk through its mechanism in order. In the example, show a concrete starting state and up to two important actions, including what each action returns or changes and why. Choose a tiny, direct example that demonstrates the mechanism; avoid extra algorithms or arithmetic that are not needed. If the request asks to solve a problem, show the reasoning steps before the conclusion. The common-mistake section must correct one plausible misconception about the topic without adding unrelated uses. If you give a wrong-result example, reuse the exact setup above and state its correct result; do not introduce a second example.
 
 Stay on "${topic}". End every sentence and section completely.
 
@@ -316,7 +275,8 @@ Only when "${topic}" is a procedure a programmer writes, add a final ## Code sec
   ];
 }
 
-function repairMessages(topic, draft, validationError) {
+export function repairMessages(topic, tier, angle, draft, validationError) {
+  const depth = DEPTH[tier] || DEPTH.tier3;
   return [
     {
       role: 'system',
@@ -326,6 +286,10 @@ function repairMessages(topic, draft, validationError) {
       role: 'user',
       content: `The learner asked: "${topic}"
 The previous draft failed validation: ${validationError}
+Requested learner tier: ${depth.label}
+Tier-specific teaching requirements: ${depth.instructions}
+Write ${depth.words}; follow the two-sentences-per-section rule closely and keep every sentence under 30 words.
+${angleNote(angle)}
 
 Rewrite this draft from scratch to answer the learner's exact request. Treat it only as a source of facts, not as a format to copy. Keep one small, factually consistent example. Use exactly these five headings once, in this order:
 ## What it is
@@ -334,16 +298,17 @@ Rewrite this draft from scratch to answer the learner's exact request. Treat it 
 ## A common mistake
 ## Check yourself
 
-Write exactly two distinct complete sentences under each of the first four headings, each no longer than 35 words and on its own line. Write exactly two short answerable questions under Check yourself, one per line. Do not leave a section with only one sentence, repeat sentences or the topic title, add any other heading, use a heading deeper than ##, or write answers after the questions.
+Write one or two distinct complete sentences under each of the first four headings, each no longer than 30 words and on its own line. In One example, explain at most two actions chronologically in exactly two prose sentences, with no bullets or numbered list. Write exactly two short answerable questions under Check yourself, one per line. Do not leave a section empty, repeat sentences or the topic title, add any other heading, use a heading deeper than ##, or write answers after the questions.
 
 Draft to repair:
-${draft}`,
+${draft}
+
+Only when "${topic}" is a procedure a programmer writes, add a final ## Code section with one fenced example of at most 12 lines that matches the note. Do not invent a library. Otherwise omit the Code heading. Every heading line must start with exactly two # characters; a ### heading is invalid.`,
     },
   ];
 }
 
 export async function writeCheckedLesson({ subject, topic, tier, angle, signal }) {
-  await detectOllamaModel();
   const key = lessonKey({ topic, tier, angle });
   const saved = cachedLesson(key);
   if (saved && lessonIsReady(topic, saved)) return { content: saved, provider: 'Cache' };
@@ -363,11 +328,11 @@ export async function writeCheckedLesson({ subject, topic, tier, angle, signal }
       let lesson = stripDiagrams(raw);
       let validationError = lessonValidationError(topic, lesson);
 
-      if (validationError) {
-        if (mustTryNextProvider(validationError)) throw new Error(validationError);
+      for (let repairAttempt = 0; validationError && repairAttempt < 2; repairAttempt += 1) {
+        if (repairAttempt === 0 && mustTryNextProvider(validationError)) throw new Error(validationError);
         const repaired = await collectLesson(
           provider,
-          repairMessages(topic, raw, validationError),
+          repairMessages(topic, tier, angle, lesson, validationError),
           options,
         );
         lesson = stripDiagrams(repaired);
@@ -389,41 +354,25 @@ export async function writeCheckedLesson({ subject, topic, tier, angle, signal }
     }
   }
 
-  const cloudConfigured = providers.length > 1;
-  const recovery = cloudConfigured
-    ? 'All configured lesson providers failed.'
-    : `The local model (${activeModel}) could not finish this note.`;
-  const error = new Error(`${recovery} ${failures.join(' ')}`);
+  const error = new Error(`All configured Groq providers failed. ${failures.join(' ')}`);
   error.code = 'AI_PROVIDERS_FAILED';
   throw error;
 }
 
 async function* streamProviderChat(provider, messages, { numPredict = 420, signal } = {}) {
-  const local = provider.kind === 'ollama';
-  const headers = { 'Content-Type': 'application/json' };
-  if (!local) headers.Authorization = `Bearer ${provider.key}`;
-
-  const body = local
-    ? {
-      model: provider.model,
-      stream: true,
-      keep_alive: '30m',
-      options: {
-        temperature: 0.2,
-        repeat_penalty: 1.15,
-        repeat_last_n: 128,
-        num_predict: numPredict,
-        num_ctx: 2048,
-      },
-      messages,
-    }
-    : {
-      model: provider.model,
-      stream: true,
-      temperature: 0.2,
-      max_tokens: numPredict,
-      messages,
-    };
+  const headers = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${provider.key}`,
+  };
+  const body = {
+  model: provider.model,
+  stream: true,
+  temperature: 0.2,
+  max_completion_tokens: Math.max(numPredict, 1400),
+  reasoning_effort: 'low',
+  include_reasoning: false,
+  messages,
+};
 
   const res = await fetch(provider.endpoint, {
     method: 'POST',
@@ -432,10 +381,6 @@ async function* streamProviderChat(provider, messages, { numPredict = 420, signa
     signal,
   });
   if (!res.ok) {
-    if (local) {
-      const detail = await res.text();
-      throw new Error(detail.slice(0, 180) || `Ollama returned ${res.status}`);
-    }
     let detail = '';
     try {
       const body = await res.json();
@@ -454,14 +399,14 @@ async function* streamProviderChat(provider, messages, { numPredict = 420, signa
     const { done, value } = await reader.read();
     if (done) {
       pending += decoder.decode();
-      if (pending.trim()) yield* parseProviderLine(pending, local);
+      if (pending.trim())       yield* parseProviderLine(pending);
       break;
     }
     pending += decoder.decode(value, { stream: true });
     const lines = pending.split('\n');
     pending = lines.pop() || '';
     for (const line of lines) {
-      yield* parseProviderLine(line, local);
+      yield* parseProviderLine(line);
     }
   }
 }
@@ -474,18 +419,9 @@ function readProviderJson(value) {
   }
 }
 
-function* parseProviderLine(line, local) {
+function* parseProviderLine(line) {
   const trimmed = line.trim();
   if (!trimmed) return;
-
-  if (local) {
-    const message = readProviderJson(trimmed);
-    if (!message) return;
-    if (message.error) throw new Error(typeof message.error === 'string' ? message.error : 'The local model returned an error.');
-    const content = message.message?.content || '';
-    if (content) yield content;
-    return;
-  }
 
   if (!trimmed.startsWith('data:')) return;
   const data = trimmed.slice(5).trim();

@@ -35,7 +35,7 @@ export function UserProvider({ children }) {
     }
     loadData();
     return () => { mounted = false; };
-  }, []);
+  }, [user?.id]);
 
   const switchUser = (selectedUser) => {
     setUser(selectedUser);

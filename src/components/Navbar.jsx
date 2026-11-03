@@ -1,17 +1,15 @@
 import { useState, useEffect } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useUser } from '../context/UserContext';
 import { 
-  Brain, Cpu, User, ArrowRight, Volume2, VolumeX, Activity, 
-  Sparkles, BookOpen, Layers, Compass, Zap
+  Volume2, VolumeX, Zap
 } from 'lucide-react';
 import ThemeSelector from './ThemeSelector';
 import { normalizeTheme } from '../theme';
 import { sounds } from '../utils/soundEffects';
 
-export default function Navbar({ currentStep = 0, session = null }) {
+export default function Navbar({ session = null }) {
   const location = useLocation();
-  const navigate = useNavigate();
   const { user } = useUser();
   const [muted, setMuted] = useState(sounds.isMuted());
   const [activeTheme, setActiveTheme] = useState(() => {

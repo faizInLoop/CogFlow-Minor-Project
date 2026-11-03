@@ -6,7 +6,7 @@ import { SUBJECTS, createCustomUniversalSubject } from '../data/subjects';
 import { sounds } from '../utils/soundEffects';
 import { 
   ArrowLeft, Search, Check, ArrowRight, Layers, Sparkles, Clock, X,
-  PlusCircle, GraduationCap, Compass, HelpCircle, BookOpen
+  PlusCircle, GraduationCap
 } from 'lucide-react';
 
 const CATEGORIES = [
